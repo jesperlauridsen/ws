@@ -13,6 +13,8 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import gsap from 'gsap';
 import Stats from 'stats.js';
 import noiseURL from '@/assets/noise.png';
+import nebularURL from '@/assets/test2.png';
+import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
 
 type Orb = {
   base: THREE.Mesh;
@@ -44,35 +46,7 @@ onMounted(() => {
   renderer.setPixelRatio(window.devicePixelRatio);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-
-  window.addEventListener('mousemove', (event) => {
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-    // Raycast and check which sphere is hovered
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(scene.children, false);
-
-    intersects.forEach((intersect) => {
-      const intersected = orbs.find((orb) => orb.base === intersect.object) || null;
-      if (intersected !== null) hovered.push(intersected);
-      if (intersected) {
-        gsap.to(intersected.bloom.material, { opacity: 1, duration: 0.5 });
-        gsap.to(intersected.base.material, { opacity: 0, duration: 0.5 });
-        intersected.base.userData.glowing = true;
-      }
-    });
-    if (intersects.length === 0) {
-      hovered.forEach((hovered) => {
-        if (hovered.base.userData.glowing) {
-          gsap.to(hovered.bloom.material, { opacity: 0, duration: 2.5 });
-          gsap.to(hovered.base.material, { opacity: 1, duration: 2.5 });
-          hovered.base.userData.glowing = false;
-        }
-      });
-      hovered.length = 0;
-    }
-  });
+  const materials = new Map<THREE.Mesh, THREE.Material>();
 
   //sphere
   const geometry = new THREE.SphereGeometry(0.3, 32, 32);
@@ -163,7 +137,7 @@ onMounted(() => {
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
   scene.add(ambientLight);
 
-  const pointLight = new THREE.PointLight(0xffffff, 60);
+  const pointLight = new THREE.PointLight(0xffffff, 1);
   pointLight.position.set(5, 5, 5);
   scene.add(pointLight);
 
@@ -176,14 +150,15 @@ onMounted(() => {
       (Math.random() - 0.5) * 20,
     );
 
+    const randomColor = new THREE.Color(Math.random(), Math.random(), Math.random());
     const baseMaterial = new THREE.MeshPhongMaterial({
-      color: 0xffff00,
+      color: randomColor,
       opacity: 1,
       transparent: true,
     });
 
     const bloomMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: randomColor,
       opacity: 0, // Every second one is visible in bloom
       transparent: true,
       depthWrite: false,
@@ -209,6 +184,46 @@ onMounted(() => {
 
     orbs.push({ base, bloom });
   }
+
+  /* SMOKE */
+  const cloudParticles: THREE.Mesh[] = [];
+
+  //  PointLight to Scene
+  let orangeLight = new THREE.PointLight(0xcc6600, 50, 450, 1.7);
+  orangeLight.position.set(200, 300, 100);
+  scene.add(orangeLight);
+  let redLight = new THREE.PointLight(0xd8547e, 50, 450, 1.7);
+  redLight.position.set(100, 300, 100);
+  scene.add(redLight);
+  let blueLight = new THREE.PointLight(0x3677ac, 50, 450, 1.7);
+  blueLight.position.set(300, 300, 200);
+  scene.add(blueLight);
+
+  // Smoke Loaders
+  loader.load(nebularURL, function (texture) {
+    let cloudGeo = new THREE.PlaneGeometry(250, 250);
+    let cloudMaterial = new THREE.MeshLambertMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false, // Prevent z-fighting and make blend layers play nicer
+      blending: THREE.AdditiveBlending, // Core of the "light stack" effect
+    });
+
+    for (let p = 0; p < 25; p++) {
+      let cloud = new THREE.Mesh(cloudGeo, cloudMaterial);
+      cloud.position.set(Math.random() * 300 - 150, Math.random() * 400 - 200, -200);
+      //cloud.rotation.x = 1.16;
+      //cloud.rotation.y = -0.12;
+      cloud.rotation.z = Math.random() * 2 * Math.PI;
+      cloud.material.opacity = 0.5; // Feels lighter and stacks better
+
+      cloud.material.opacity = 1;
+      cloudParticles.push(cloud);
+      scene.add(cloud);
+      cloud.layers.set(0); // Already default
+      cloud.renderOrder = 1; // base
+    }
+  });
 
   // Create a render target for the bloom pass
   const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
@@ -268,35 +283,6 @@ onMounted(() => {
 
   finalComposer.addPass(mixPass);
 
-  const materials = new Map<THREE.Object3D, THREE.Material>();
-
-  function nonBloomed(obj: THREE.Object3D) {
-    if ((obj as THREE.Mesh).isMesh && bloomLayer.test(obj.layers) === false) {
-      const mesh = obj as THREE.Mesh;
-
-      // Only replace material if not already replaced
-      if (!Array.isArray(mesh.material)) {
-        if (!materials.has(mesh)) {
-          materials.set(mesh, mesh.material);
-        }
-
-        const original = mesh.material as THREE.MeshPhongMaterial;
-        const t = 1 - original.opacity;
-        const color = new THREE.Color(0x000000).lerp(new THREE.Color(0xffff00), t);
-
-        mesh.material = new THREE.MeshBasicMaterial({ color });
-      }
-    }
-  }
-
-  function restoreMaterial(obj: THREE.Object3D) {
-    const mesh = obj as THREE.Mesh;
-    if (materials.has(mesh)) {
-      mesh.material = materials.get(mesh)!;
-      materials.delete(mesh);
-    }
-  }
-
   // Handle resizing
   window.addEventListener('resize', () => {
     const width = window.innerWidth;
@@ -313,6 +299,35 @@ onMounted(() => {
     mixPass.uniforms['bloomTexture'].value = bloomComposer.renderTarget2.texture;
   });
 
+  window.addEventListener('mousemove', (event) => {
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // Raycast and check which sphere is hovered
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(scene.children, false);
+
+    intersects.forEach((intersect) => {
+      const intersected = orbs.find((orb) => orb.base === intersect.object) || null;
+      if (intersected !== null) hovered.push(intersected);
+      if (intersected) {
+        gsap.to(intersected.bloom.material, { opacity: 1, duration: 0.5 });
+        gsap.to(intersected.base.material, { opacity: 0, duration: 0.5 });
+        intersected.base.userData.glowing = true;
+      }
+    });
+    if (intersects.length === 0) {
+      hovered.forEach((hovered) => {
+        if (hovered.base.userData.glowing) {
+          gsap.to(hovered.bloom.material, { opacity: 0, duration: 2.5 });
+          gsap.to(hovered.base.material, { opacity: 1, duration: 2.5 });
+          hovered.base.userData.glowing = false;
+        }
+      });
+      hovered.length = 0;
+    }
+  });
+
   // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
@@ -320,10 +335,13 @@ onMounted(() => {
       (material as THREE.ShaderMaterial).uniforms.time.value = clock.getElapsedTime();
     });
     stats.begin();
+    cloudParticles.forEach((p) => {
+      p.rotation.z -= 0.001;
+    });
     requestAnimationFrame(animate);
-    scene.traverse(nonBloomed); // swap in non-bloom materials
+    scene.traverse((obj) => nonBloomed(obj, bloomLayer, materials));
     bloomComposer.render();
-    scene.traverse(restoreMaterial); // restore real materials
+    scene.traverse((obj) => restoreMaterial(obj, materials)); // restore real materials
     finalComposer.render();
     stats.end();
   };
