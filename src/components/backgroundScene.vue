@@ -189,24 +189,19 @@ onMounted(() => {
   const cloudParticles: THREE.Mesh[] = [];
 
   //  PointLight to Scene
-  let orangeLight = new THREE.PointLight(0xcc6600, 50, 450, 1.7);
-  orangeLight.position.set(200, 300, 100);
-  scene.add(orangeLight);
-  let redLight = new THREE.PointLight(0xd8547e, 50, 450, 1.7);
-  redLight.position.set(100, 300, 100);
-  scene.add(redLight);
   let blueLight = new THREE.PointLight(0x3677ac, 50, 450, 1.7);
-  blueLight.position.set(300, 300, 200);
+  blueLight.position.set(0, 0, 0);
   scene.add(blueLight);
 
   // Smoke Loaders
   loader.load(nebularURL, function (texture) {
     let cloudGeo = new THREE.PlaneGeometry(250, 250);
-    let cloudMaterial = new THREE.MeshLambertMaterial({
+    let cloudMaterial = new THREE.MeshPhongMaterial({
       map: texture,
       transparent: true,
-      depthWrite: false, // Prevent z-fighting and make blend layers play nicer
-      blending: THREE.AdditiveBlending, // Core of the "light stack" effect
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
     });
 
     for (let p = 0; p < 25; p++) {
@@ -215,8 +210,7 @@ onMounted(() => {
       //cloud.rotation.x = 1.16;
       //cloud.rotation.y = -0.12;
       cloud.rotation.z = Math.random() * 2 * Math.PI;
-      cloud.material.opacity = 0.5; // Feels lighter and stacks better
-
+      cloud.userData.ignoreRaycast = true;
       cloud.material.opacity = 1;
       cloudParticles.push(cloud);
       scene.add(cloud);
@@ -305,7 +299,9 @@ onMounted(() => {
 
     // Raycast and check which sphere is hovered
     raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(scene.children, false);
+    const intersects = raycaster
+      .intersectObjects(scene.children, true)
+      .filter((i) => !i.object.userData.ignoreRaycast);
 
     intersects.forEach((intersect) => {
       const intersected = orbs.find((orb) => orb.base === intersect.object) || null;
