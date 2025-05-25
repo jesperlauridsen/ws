@@ -35,7 +35,7 @@ onMounted(() => {
   if (!canvas.value) return;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.z = 5;
 
   const renderer = new THREE.WebGLRenderer({
@@ -193,8 +193,15 @@ onMounted(() => {
   blueLight.position.set(0, 0, 0);
   scene.add(blueLight);
 
+  const smokeColors = [
+    new THREE.Color(0xff9955), // nice orange
+    new THREE.Color(0x6699ff), // nice blue
+    new THREE.Color(0x663399), // dark purple
+  ];
+
   // Smoke Loaders
   loader.load(nebularURL, function (texture) {
+    let number = Math.floor(Math.random() * smokeColors.length);
     let cloudGeo = new THREE.PlaneGeometry(250, 250);
     let cloudMaterial = new THREE.MeshPhongMaterial({
       map: texture,
@@ -202,13 +209,29 @@ onMounted(() => {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
+      color: new THREE.Color(smokeColors[number]),
+      emissive: new THREE.Color(smokeColors[number]),
+      opacity: 0.5,
+      emissiveIntensity: 0.2,
+      depthTest: true,
     });
 
     for (let p = 0; p < 25; p++) {
-      let cloud = new THREE.Mesh(cloudGeo, cloudMaterial);
+      let material = cloudMaterial.clone();
+      let colorIndex = Math.floor(Math.random() * smokeColors.length);
+      material.color = smokeColors[colorIndex];
+      material.emissive = smokeColors[colorIndex];
+      let cloud = new THREE.Mesh(cloudGeo, material);
       cloud.position.set(Math.random() * 300 - 150, Math.random() * 400 - 200, -200);
-      //cloud.rotation.x = 1.16;
-      //cloud.rotation.y = -0.12;
+
+      cloud.userData = {
+        colorIndex,
+        runtime: Math.random() * 5000 + 2000, // 2–7 seconds
+        startTime: Date.now(),
+        rotationSpeed: (Math.random() - 0.5) * 0.004, // -0.002 to +0.002
+        id: 'cloud' + p,
+      };
+
       cloud.rotation.z = Math.random() * 2 * Math.PI;
       cloud.userData.ignoreRaycast = true;
       cloud.material.opacity = 1;
@@ -327,12 +350,35 @@ onMounted(() => {
   // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
+    const currentTime = Date.now();
     timeUpdatedMaterisls.forEach((material) => {
       (material as THREE.ShaderMaterial).uniforms.time.value = clock.getElapsedTime();
     });
     stats.begin();
-    cloudParticles.forEach((p) => {
-      p.rotation.z -= 0.001;
+    cloudParticles.forEach((cloud) => {
+      cloud.rotation.z += cloud.userData.rotationSpeed;
+
+      if (cloud.userData.runtime + cloud.userData.startTime < currentTime) {
+        let newIndex = Math.floor(Math.random() * smokeColors.length);
+
+        const newColor = new THREE.Color(smokeColors[newIndex]);
+
+        // Smooth color transition
+        gsap.to(cloud.material.color, {
+          r: newColor.r,
+          g: newColor.g,
+          b: newColor.b,
+          duration: 1.5,
+          ease: 'sine.inOut',
+        });
+
+        cloud.userData.colorIndex = newIndex;
+        console.log('Cloud color change triggered on', cloud.userData.id, newIndex);
+
+        // Reset runtime
+        cloud.userData.startTime = currentTime;
+        cloud.userData.runtime = Math.random() * 5000 + 2000; // 2–7 seconds
+      }
     });
     requestAnimationFrame(animate);
     scene.traverse((obj) => nonBloomed(obj, bloomLayer, materials));
