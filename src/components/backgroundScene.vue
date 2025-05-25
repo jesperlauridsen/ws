@@ -216,7 +216,7 @@ onMounted(() => {
       depthTest: true,
     });
 
-    for (let p = 0; p < 25; p++) {
+    for (let p = 0; p < 1; p++) {
       let material = cloudMaterial.clone();
       let colorIndex = Math.floor(Math.random() * smokeColors.length);
       material.color = smokeColors[colorIndex];
@@ -229,7 +229,7 @@ onMounted(() => {
         runtime: Math.random() * 5000 + 2000, // 2–7 seconds
         startTime: Date.now(),
         rotationSpeed: (Math.random() - 0.5) * 0.004, // -0.002 to +0.002
-        id: 'cloud' + p,
+        id: 'cloud-' + p,
       };
 
       cloud.rotation.z = Math.random() * 2 * Math.PI;
@@ -361,19 +361,29 @@ onMounted(() => {
       if (cloud.userData.runtime + cloud.userData.startTime < currentTime) {
         let newIndex = Math.floor(Math.random() * smokeColors.length);
 
-        const newColor = new THREE.Color(smokeColors[newIndex]);
+        const newColor = smokeColors[newIndex].clone();
 
         // Smooth color transition
-        gsap.to(cloud.material.color, {
+        gsap.to((cloud.material as THREE.MeshPhongMaterial).color, {
           r: newColor.r,
           g: newColor.g,
           b: newColor.b,
-          duration: 1.5,
+          duration: 0.5,
           ease: 'sine.inOut',
+          overwrite: true,
+        });
+
+        gsap.to((cloud.material as THREE.MeshPhongMaterial).emissive, {
+          r: newColor.r,
+          g: newColor.g,
+          b: newColor.b,
+          duration: 0.5,
+          ease: 'sine.inOut',
+          overwrite: true,
         });
 
         cloud.userData.colorIndex = newIndex;
-        console.log('Cloud color change triggered on', cloud.userData.id, newIndex);
+        console.log('Cloud color change triggered on', cloud.userData.id, newIndex, newColor);
 
         // Reset runtime
         cloud.userData.startTime = currentTime;
