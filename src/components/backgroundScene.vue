@@ -194,9 +194,9 @@ onMounted(() => {
   scene.add(blueLight);
 
   const smokeColors = [
-    new THREE.Color(0xff9955), // nice orange
     new THREE.Color(0x6699ff), // nice blue
     new THREE.Color(0x663399), // dark purple
+    new THREE.Color(0xcc5500), // nice orange
   ];
 
   // Smoke Loaders
@@ -205,9 +205,9 @@ onMounted(() => {
     let cloudGeo = new THREE.PlaneGeometry(250, 250);
     let cloudMaterial = new THREE.MeshPhongMaterial({
       map: texture,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      //transparent: true,
+      //depthWrite: false,
+      //blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       color: new THREE.Color(smokeColors[number]),
       emissive: new THREE.Color(smokeColors[number]),
@@ -226,7 +226,7 @@ onMounted(() => {
 
       cloud.userData = {
         colorIndex,
-        runtime: Math.random() * 5000 + 2000, // 2–7 seconds
+        runtime: Math.random() * 2000 + 5000, // 2–7 seconds
         startTime: Date.now(),
         rotationSpeed: (Math.random() - 0.5) * 0.004, // -0.002 to +0.002
         id: 'cloud-' + p,
@@ -359,35 +359,37 @@ onMounted(() => {
       cloud.rotation.z += cloud.userData.rotationSpeed;
 
       if (cloud.userData.runtime + cloud.userData.startTime < currentTime) {
-        let newIndex = Math.floor(Math.random() * smokeColors.length);
-
-        const newColor = smokeColors[newIndex].clone();
-
-        // Smooth color transition
-        gsap.to((cloud.material as THREE.MeshPhongMaterial).color, {
-          r: newColor.r,
-          g: newColor.g,
-          b: newColor.b,
-          duration: 0.5,
-          ease: 'sine.inOut',
-          overwrite: true,
-        });
-
-        gsap.to((cloud.material as THREE.MeshPhongMaterial).emissive, {
-          r: newColor.r,
-          g: newColor.g,
-          b: newColor.b,
-          duration: 0.5,
-          ease: 'sine.inOut',
-          overwrite: true,
-        });
-
-        cloud.userData.colorIndex = newIndex;
-        console.log('Cloud color change triggered on', cloud.userData.id, newIndex, newColor);
-
-        // Reset runtime
         cloud.userData.startTime = currentTime;
         cloud.userData.runtime = Math.random() * 5000 + 2000; // 2–7 seconds
+
+        let newIndex = 0;
+        if (cloud.userData.colorIndex >= smokeColors.length - 1) {
+          cloud.userData.colorIndex = 0;
+        } else {
+          cloud.userData.colorIndex = cloud.userData.colorIndex + 1;
+        }
+        newIndex = cloud.userData.colorIndex;
+        console.log(newIndex);
+
+        const newColor = new THREE.Color(smokeColors[newIndex]); // Safe way
+        const oldColor = (cloud.material as THREE.MeshPhongMaterial).color;
+
+        const now = Date.now();
+        const tStart = cloud.userData.transitionStart;
+        const tDuration = cloud.userData.transitionDuration;
+
+        const elapsed = now - tStart;
+        const alpha = THREE.MathUtils.clamp(elapsed / tDuration, 0, 1);
+
+        // Lerp color
+        const currentColor = cloud.userData.fromColor.clone().lerp(cloud.userData.toColor, alpha);
+        (cloud.material as THREE.MeshPhongMaterial).color.copy(currentColor);
+        (cloud.material as THREE.MeshPhongMaterial).emissive.copy(currentColor);
+
+        // Stop updating after finished
+        if (alpha === 1) {
+          cloud.userData.transitionStart = undefined;
+        }
       }
     });
     requestAnimationFrame(animate);
