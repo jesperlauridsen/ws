@@ -162,6 +162,7 @@ onMounted(() => {
       opacity: 0, // Every second one is visible in bloom
       transparent: true,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
 
     const geometry = new THREE.SphereGeometry(0.3, 32, 32);
@@ -206,8 +207,8 @@ onMounted(() => {
     let cloudMaterial = new THREE.MeshPhongMaterial({
       map: texture,
       //transparent: true,
-      //depthWrite: false,
-      //blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       color: new THREE.Color(smokeColors[number]),
       emissive: new THREE.Color(smokeColors[number]),
@@ -234,6 +235,7 @@ onMounted(() => {
 
       cloud.rotation.z = Math.random() * 2 * Math.PI;
       cloud.userData.ignoreRaycast = true;
+      cloud.userData.fromColor = smokeColors[colorIndex];
       cloud.material.opacity = 1;
       cloudParticles.push(cloud);
       scene.add(cloud);
@@ -372,7 +374,8 @@ onMounted(() => {
         console.log(newIndex);
 
         const newColor = new THREE.Color(smokeColors[newIndex]); // Safe way
-        const oldColor = (cloud.material as THREE.MeshPhongMaterial).color;
+
+        cloud.userData.toColor = newColor.clone();
 
         const now = Date.now();
         const tStart = cloud.userData.transitionStart;
@@ -382,6 +385,7 @@ onMounted(() => {
         const alpha = THREE.MathUtils.clamp(elapsed / tDuration, 0, 1);
 
         // Lerp color
+        console.log(cloud.userData);
         const currentColor = cloud.userData.fromColor.clone().lerp(cloud.userData.toColor, alpha);
         (cloud.material as THREE.MeshPhongMaterial).color.copy(currentColor);
         (cloud.material as THREE.MeshPhongMaterial).emissive.copy(currentColor);
@@ -389,6 +393,7 @@ onMounted(() => {
         // Stop updating after finished
         if (alpha === 1) {
           cloud.userData.transitionStart = undefined;
+          cloud.userData.fromColor = newColor.clone();
         }
       }
     });
