@@ -49,99 +49,20 @@ onMounted(() => {
   const materials = new Map<THREE.Mesh, THREE.Material>();
 
   //sphere
-  const geometry = new THREE.SphereGeometry(0.3, 32, 32);
   const loader = new THREE.TextureLoader();
-  const noiseTexture = loader.load(noiseURL, (texture: THREE.Texture) => {
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(4, 4); // Adjust the repeat value as needed
-  });
-  noiseTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  noiseTexture.wrapS = noiseTexture.wrapT = THREE.RepeatWrapping;
-  noiseTexture.repeat.set(4, 4); // Adjust the repeat value as needed
-  const cloudMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      time: { value: 0 },
-      noiseTexture: { value: noiseTexture },
-      opacity: { value: 1.0 },
-    },
-    vertexShader: `
-    varying vec2 vUv;
-    varying vec3 vWorldPos;
-
-    void main() {
-    vUv = uv;
-
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vWorldPos = worldPosition.xyz;
-
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }`,
-    fragmentShader: `
-    uniform float time;
-    uniform sampler2D noiseTexture;
-    uniform float opacity;
-    varying vec2 vUv;
-
-    void main() {
-    vec2 uv = vUv;
-
-    // Scroll noise upwards
-    vec4 noise = texture2D(noiseTexture, uv * 3.0 + vec2(0.0, time * 0.5));
-    float noiseStrength = noise.r;
-
-    // Define vertical zones
-    float top = smoothstep(0.6, 1.0, uv.y);      // Top = full white
-    float mid = smoothstep(0.3, 0.8, uv.y);      // Middle = noise
-    float bottom = 1.0 - smoothstep(0.0, 0.3, uv.y); // Bottom = fade out
-
-    // Calculate alpha:
-    float alpha = mix(noiseStrength, 1.0, top);  // mix noise and full white
-    alpha *= mid;                                // clamp noise zone
-    alpha *= opacity;
-
-    gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
-    }`,
-    transparent: true,
-    depthWrite: true,
-    blending: THREE.AdditiveBlending,
-  });
-
-  timeUpdatedMaterisls.push(cloudMaterial);
-  const sphere = new THREE.Mesh(geometry, cloudMaterial);
-  sphere.position.set(0, 0, 0);
-  scene.add(sphere);
-  sphere.layers.set(0); // visible in normal render
-
-  // create a sphere more to be under  the shadow of the main sphere
-  // crate a a Phong material with a color of 0x000000 and opacity of 0.5
-  const baseMaterial = new THREE.MeshPhongMaterial({
-    color: 0xffffff,
-    opacity: 1,
-    transparent: true,
-  });
-  const geometry2 = new THREE.SphereGeometry(0.29999, 32, 32);
-  const sphere2 = new THREE.Mesh(geometry2, baseMaterial);
-  sphere2.position.set(0, 0, 0);
-  scene.add(sphere2);
-  sphere2.layers.set(0); // visible in normal render
-
-  sphere2.renderOrder = 0; // base
-  sphere.renderOrder = 1; // cloud
 
   // Layer management
   const BLOOM_SCENE = 1;
   const bloomLayer = new THREE.Layers();
   bloomLayer.set(BLOOM_SCENE);
 
-  // Lights
+  // Lightspheres
   const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
   scene.add(ambientLight);
 
   const pointLight = new THREE.PointLight(0xffffff, 1);
   pointLight.position.set(5, 5, 5);
   scene.add(pointLight);
-
-  const spheres: THREE.Mesh[] = [];
 
   for (let i = 0; i < 20; i++) {
     const position = new THREE.Vector3(
@@ -350,6 +271,7 @@ onMounted(() => {
   });
 
   // Animation loop
+  // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
     const currentTime = Date.now();
@@ -357,46 +279,36 @@ onMounted(() => {
       (material as THREE.ShaderMaterial).uniforms.time.value = clock.getElapsedTime();
     });
     stats.begin();
+
     cloudParticles.forEach((cloud) => {
       cloud.rotation.z += cloud.userData.rotationSpeed;
 
-      if (cloud.userData.runtime + cloud.userData.startTime < currentTime) {
-        cloud.userData.startTime = currentTime;
-        cloud.userData.runtime = Math.random() * 5000 + 2000; // 2–7 seconds
+      // If no transition or transition finished → pick a new target color
+      if (
+        !cloud.userData.transitionStart ||
+        currentTime > cloud.userData.transitionStart + cloud.userData.transitionDuration
+      ) {
+        cloud.userData.transitionStart = currentTime;
+        cloud.userData.transitionDuration = Math.random() * 5000 + 2000; // 2–7 seconds
 
-        let newIndex = 0;
-        if (cloud.userData.colorIndex >= smokeColors.length - 1) {
-          cloud.userData.colorIndex = 0;
-        } else {
-          cloud.userData.colorIndex = cloud.userData.colorIndex + 1;
-        }
-        newIndex = cloud.userData.colorIndex;
-        console.log(newIndex);
+        // Cycle to the next smoke color
+        cloud.userData.colorIndex = (cloud.userData.colorIndex + 1) % smokeColors.length;
 
-        const newColor = new THREE.Color(smokeColors[newIndex]); // Safe way
-
-        cloud.userData.toColor = newColor.clone();
-
-        const now = Date.now();
-        const tStart = cloud.userData.transitionStart;
-        const tDuration = cloud.userData.transitionDuration;
-
-        const elapsed = now - tStart;
-        const alpha = THREE.MathUtils.clamp(elapsed / tDuration, 0, 1);
-
-        // Lerp color
-        console.log(cloud.userData);
-        const currentColor = cloud.userData.fromColor.clone().lerp(cloud.userData.toColor, alpha);
-        (cloud.material as THREE.MeshPhongMaterial).color.copy(currentColor);
-        (cloud.material as THREE.MeshPhongMaterial).emissive.copy(currentColor);
-
-        // Stop updating after finished
-        if (alpha === 1) {
-          cloud.userData.transitionStart = undefined;
-          cloud.userData.fromColor = newColor.clone();
-        }
+        const newColor = new THREE.Color(smokeColors[cloud.userData.colorIndex]);
+        cloud.userData.fromColor = (cloud.userData.toColor || new THREE.Color()).clone();
+        cloud.userData.toColor = newColor;
       }
+
+      // --- Always update color each frame ---
+      const elapsed = currentTime - cloud.userData.transitionStart;
+      const alpha = THREE.MathUtils.clamp(elapsed / cloud.userData.transitionDuration, 0, 1);
+
+      const currentColor = cloud.userData.fromColor.clone().lerp(cloud.userData.toColor, alpha);
+
+      (cloud.material as THREE.MeshPhongMaterial).color.copy(currentColor);
+      (cloud.material as THREE.MeshPhongMaterial).emissive.copy(currentColor);
     });
+
     requestAnimationFrame(animate);
     scene.traverse((obj) => nonBloomed(obj, bloomLayer, materials));
     bloomComposer.render();
