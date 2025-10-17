@@ -10,11 +10,15 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import gsap from 'gsap';
 import Stats from 'stats.js';
 import noiseURL from '@/assets/noise.png';
 import nebularURL from '@/assets/test2.png';
+import fraURL from '@/assets/fra.png';
 import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
+import logoURL from '@/assets/codelogo.glb?url';
+import celllogoURL from '@/assets/celllogo3.glb?url';
 
 type Orb = {
   base: THREE.Mesh;
@@ -36,7 +40,7 @@ onMounted(() => {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 5;
+  camera.position.z = 15;
 
   const renderer = new THREE.WebGLRenderer({
     canvas: canvas.value,
@@ -50,7 +54,7 @@ onMounted(() => {
 
   //sphere
   const loader = new THREE.TextureLoader();
-
+  const gltfloader = new GLTFLoader();
   // Layer management
   const BLOOM_SCENE = 1;
   const bloomLayer = new THREE.Layers();
@@ -63,6 +67,116 @@ onMounted(() => {
   const pointLight = new THREE.PointLight(0xffffff, 1);
   pointLight.position.set(5, 5, 5);
   scene.add(pointLight);
+
+  let logo: THREE.Object3D<THREE.Object3DEventMap>;
+  let baseRotation: THREE.Euler;
+  let targetRotation = { x: 0, z: 0 };
+  let idleRotation = { x: 0, z: 0 };
+
+  const updateLogoRotation = () => {
+    if (!logo) return;
+
+    const targetX = baseRotation.x + targetRotation.x + idleRotation.x;
+    const targetZ = baseRotation.z + targetRotation.z + idleRotation.z;
+
+    gsap.to(logo.rotation, {
+      x: targetX,
+      z: targetZ,
+      duration: 1.2,
+      ease: 'power2.out',
+      overwrite: true,
+    });
+  };
+
+  loader.load(fraURL, function (fractureTexture) {
+    console.log(fractureTexture, 'fracture');
+
+    fractureTexture.wrapS = THREE.RepeatWrapping;
+    fractureTexture.wrapT = THREE.RepeatWrapping;
+    fractureTexture.repeat.set(1, 1);
+
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xfff,
+      map: fractureTexture,
+      transparent: true,
+      refractionRatio: 0.1,
+      blending: THREE.AdditiveBlending,
+      opacity: 150,
+      bumpMap: fractureTexture, // bump map from same texture
+      bumpScale: 0.1, // tweak for depth intensity
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      depthTest: true,
+    });
+
+    // Create the geometry and apply the materials
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const cubeR = new THREE.Mesh(geometry, material);
+    const fragments: THREE.Mesh[] = [];
+
+    cubeR.position.set(0, 0, -5);
+    //scene.add(cubeR);
+    // load in model from assets/codelogo.glb
+    gltfloader.load(celllogoURL, (gltf: { scene: any }) => {
+      const testMaterial = new THREE.MeshPhongMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+      });
+      logo = gltf.scene;
+      scene.add(logo);
+      logo.traverse((child: THREE.Object3D) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.material = material;
+        }
+      });
+      logo.position.set(0, 0, -5);
+      logo.scale.set(0.4, 0.4, 0.4);
+      logo.rotation.x = Math.PI / 2;
+      console.log('Loaded logo model:', logo);
+      baseRotation = logo.rotation.clone();
+
+      // --- LOGO IDLE + MOUSE INTERACTION ANIMATION ---
+      idleRotation = { x: 0, z: 0 };
+      targetRotation = { x: 0, z: 0 };
+      let lastMouseMove = Date.now();
+      let isIdle = true;
+
+      // Subtle idle “breathing” wobble
+      const idleTimeline = gsap.timeline({ repeat: -1, yoyo: true });
+      idleTimeline.to(idleRotation, {
+        x: 0.15,
+        z: 0.12,
+        duration: 4,
+        ease: 'sine.inOut',
+      });
+
+      // Mousemove → rotate on X and Z
+      window.addEventListener('mousemove', (event) => {
+        lastMouseMove = Date.now();
+        isIdle = false;
+
+        const normalizedX = (event.clientX / window.innerWidth - 0.5) * 2;
+        const normalizedY = (event.clientY / window.innerHeight - 0.5) * 2;
+
+        // Map mouse to tilt (note the signs — feels more natural)
+        targetRotation.x = normalizedY * 0.4; // up/down tilt
+        targetRotation.z = -normalizedX * 0.4; // side tilt
+
+        updateLogoRotation();
+      });
+
+      // If mouse idle for a while → return to idle-only
+      setInterval(() => {
+        if (Date.now() - lastMouseMove > 2500 && !isIdle) {
+          isIdle = true;
+          targetRotation.x = 0;
+          targetRotation.z = 0;
+          updateLogoRotation();
+        }
+      }, 500);
+    });
+  });
 
   for (let i = 0; i < 20; i++) {
     const position = new THREE.Vector3(
@@ -86,7 +200,7 @@ onMounted(() => {
       blending: THREE.AdditiveBlending,
     });
 
-    const geometry = new THREE.SphereGeometry(0.3, 32, 32);
+    const geometry = new THREE.SphereGeometry(0.05, 32, 32);
     const base = new THREE.Mesh(geometry, baseMaterial);
     const bloom = new THREE.Mesh(geometry, bloomMaterial);
     base.userData.glowing = false; // Every second one is glowing
@@ -125,6 +239,7 @@ onMounted(() => {
   loader.load(nebularURL, function (texture) {
     let number = Math.floor(Math.random() * smokeColors.length);
     let cloudGeo = new THREE.PlaneGeometry(250, 250);
+    console.log(texture, 'nebula');
     let cloudMaterial = new THREE.MeshPhongMaterial({
       map: texture,
       //transparent: true,
@@ -138,11 +253,11 @@ onMounted(() => {
       depthTest: true,
     });
 
-    for (let p = 0; p < 1; p++) {
+    for (let p = 0; p < 10; p++) {
       let material = cloudMaterial.clone();
       let colorIndex = Math.floor(Math.random() * smokeColors.length);
-      material.color = smokeColors[colorIndex];
-      material.emissive = smokeColors[colorIndex];
+      material.color = smokeColors[colorIndex].clone();
+      material.emissive = smokeColors[colorIndex].clone();
       let cloud = new THREE.Mesh(cloudGeo, material);
       cloud.position.set(Math.random() * 300 - 150, Math.random() * 400 - 200, -200);
 
@@ -152,6 +267,10 @@ onMounted(() => {
         startTime: Date.now(),
         rotationSpeed: (Math.random() - 0.5) * 0.004, // -0.002 to +0.002
         id: 'cloud-' + p,
+        fromColor: smokeColors[colorIndex].clone(),
+        toColor: smokeColors[(colorIndex + 1) % smokeColors.length].clone(),
+        transitionStart: Date.now(),
+        transitionDuration: Math.random() * 5000 + 2000,
       };
 
       cloud.rotation.z = Math.random() * 2 * Math.PI;
@@ -274,6 +393,7 @@ onMounted(() => {
   // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
+    updateLogoRotation();
     const currentTime = Date.now();
     timeUpdatedMaterisls.forEach((material) => {
       (material as THREE.ShaderMaterial).uniforms.time.value = clock.getElapsedTime();
