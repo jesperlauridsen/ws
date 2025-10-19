@@ -1,5 +1,7 @@
 <template>
-  <canvas ref="canvas"></canvas>
+  <div class="background">
+    <canvas ref="canvas"></canvas>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -17,8 +19,7 @@ import noiseURL from '@/assets/noise.png';
 import nebularURL from '@/assets/test2.png';
 import fraURL from '@/assets/fra.png';
 import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
-import logoURL from '@/assets/codelogo.glb?url';
-import celllogoURL from '@/assets/celllogo3.glb?url';
+import celllogoURL from '@/assets/codelogo7.glb?url';
 
 type Orb = {
   base: THREE.Mesh;
@@ -30,7 +31,9 @@ const hovered: Orb[] = [];
 const canvas = ref<HTMLCanvasElement | null>(null);
 const mouse = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
-
+const threshold = 0.4;
+const fragments: THREE.Mesh[] = [];
+let sceneReady = false;
 const stats = new Stats();
 stats.showPanel(0); // 0: fps, 1: ms, 2: mb
 document.body.appendChild(stats.dom);
@@ -40,7 +43,7 @@ onMounted(() => {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 15;
+  camera.position.z = 4;
 
   const renderer = new THREE.WebGLRenderer({
     canvas: canvas.value,
@@ -49,7 +52,7 @@ onMounted(() => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
+  //const controls = new OrbitControls(camera, renderer.domElement);
   const materials = new Map<THREE.Mesh, THREE.Material>();
 
   //sphere
@@ -112,7 +115,6 @@ onMounted(() => {
     // Create the geometry and apply the materials
     const geometry = new THREE.BoxGeometry(1, 1, 1);
     const cubeR = new THREE.Mesh(geometry, material);
-    const fragments: THREE.Mesh[] = [];
 
     cubeR.position.set(0, 0, -5);
     //scene.add(cubeR);
@@ -124,18 +126,23 @@ onMounted(() => {
       });
       logo = gltf.scene;
       scene.add(logo);
-      logo.traverse((child: THREE.Object3D) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          mesh.material = material;
-        }
-      });
       logo.position.set(0, 0, -5);
       logo.scale.set(0.4, 0.4, 0.4);
       logo.rotation.x = Math.PI / 2;
       console.log('Loaded logo model:', logo);
       baseRotation = logo.rotation.clone();
-
+      logo.traverse((child: THREE.Object3D) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.material = material;
+          mesh.userData.initCoords = mesh.position.clone();
+          mesh.userData.initRotation = mesh.rotation.clone();
+          console.log('initial coords', mesh.userData.initCoords);
+          mesh.castShadow = false;
+          mesh.receiveShadow = false;
+          fragments.push(mesh);
+        }
+      });
       // --- LOGO IDLE + MOUSE INTERACTION ANIMATION ---
       idleRotation = { x: 0, z: 0 };
       targetRotation = { x: 0, z: 0 };
@@ -153,6 +160,7 @@ onMounted(() => {
 
       // Mousemove → rotate on X and Z
       window.addEventListener('mousemove', (event) => {
+        sceneReady === false ? (sceneReady = true) : null;
         lastMouseMove = Date.now();
         isIdle = false;
 
@@ -299,11 +307,6 @@ onMounted(() => {
     0.001, // threshold – lower to allow more to glow
   );
   bloomComposer.addPass(bloomPass);
-
-  /*  bloomPass.threshold = 0.0;
-  bloomPass.strength = 5.0;
-  bloomPass.radius = 0; */
-
   bloomComposer.renderToScreen = false;
 
   // Final composer for the full scene (including bloom effect)
@@ -341,6 +344,107 @@ onMounted(() => {
   );
 
   finalComposer.addPass(mixPass);
+
+  function getObjectsNearCursor(objects: THREE.Mesh[], camera: THREE.Camera) {
+    for (const obj of objects) {
+      // get world position
+      const currentWorldPos = new THREE.Vector3();
+      obj.getWorldPosition(currentWorldPos);
+
+      // compute distance to **initial world position**
+      const initWorldPos = obj.userData.initCoords.clone().applyMatrix4(logo.matrixWorld);
+
+      // project into screen space
+      const screenPos = initWorldPos.clone().project(camera);
+
+      // 2D distance to mouse
+      const dx = mouse.x - screenPos.x;
+      const dy = mouse.y - screenPos.y;
+      const dist2D = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist2D < threshold && !obj.userData.exploded && !obj.userData.explosionInProgress) {
+        explodeFragment(obj);
+      } else if (dist2D > threshold && obj.userData.exploded && !obj.userData.explosionInProgress) {
+        resetFragment(obj);
+      }
+    }
+  }
+
+  function explodeFragment(fragment: THREE.Mesh) {
+    if (fragment.userData.exploded || !sceneReady) return; // already exploded
+    fragment.userData.explosionInProgress = true;
+
+    const radius = 5;
+    const radiusVariation = 2;
+
+    const randomPosition = new THREE.Vector3(
+      Math.random() * radius - radiusVariation + fragment.userData.initCoords.x,
+      Math.random() * radius - radiusVariation + fragment.userData.initCoords.y,
+      Math.random() * radius - radiusVariation + fragment.userData.initCoords.z,
+    );
+
+    gsap.to(fragment.position, {
+      x: randomPosition.x,
+      y: randomPosition.y,
+      z: randomPosition.z,
+      duration: Math.random() * 0.5 + 0.5,
+      ease: 'power2.out',
+      onComplete: () => {
+        fragment.userData.exploded = true;
+        fragment.userData.explosionInProgress = false;
+      },
+    });
+    gsap.to(fragment.rotation, {
+      x: Math.random() * Math.PI * 2,
+      y: Math.random() * Math.PI * 2,
+      z: Math.random() * Math.PI * 2,
+      duration: 1,
+      ease: 'power2.out',
+    });
+  }
+
+  /*   //make function that puts a small sphere where the mouse is positioned on the canvas
+  function getMouseWorldPosition(event: MouseEvent, camera: THREE.Camera): THREE.Vector3 {
+    const mouse = new THREE.Vector2();
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+    const point = new THREE.Vector3();
+    raycaster.ray.at(10, point); // 10 units from camera
+
+    //create sphere with material and put in the spot
+    const sphereGeometry = new THREE.SphereGeometry(0.1, 32, 32);
+    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    sphere.position.copy(point);
+    scene.add(sphere);
+    return point;
+  } */
+
+  function resetFragment(fragment: THREE.Mesh) {
+    if (!fragment.userData.exploded) return; // already reset
+    fragment.userData.explosionInProgress = true;
+    gsap.to(fragment.position, {
+      x: fragment.userData.initCoords.x,
+      y: fragment.userData.initCoords.y,
+      z: fragment.userData.initCoords.z,
+      duration: Math.random() * 0.5 + 0.5,
+      ease: 'power2.out',
+      onComplete: () => {
+        fragment.userData.explosionInProgress = false;
+        fragment.userData.exploded = false;
+      },
+    });
+    gsap.to(fragment.rotation, {
+      x: fragment.userData.initRotation.x,
+      y: fragment.userData.initRotation.y,
+      z: fragment.userData.initRotation.z,
+      duration: 1,
+      ease: 'power2.out',
+    });
+  }
 
   // Handle resizing
   window.addEventListener('resize', () => {
@@ -390,15 +494,23 @@ onMounted(() => {
   });
 
   // Animation loop
-  // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
+    getObjectsNearCursor(fragments, camera);
     updateLogoRotation();
     const currentTime = Date.now();
     timeUpdatedMaterisls.forEach((material) => {
       (material as THREE.ShaderMaterial).uniforms.time.value = clock.getElapsedTime();
     });
     stats.begin();
+
+    fragments.forEach((fragment) => {
+      if (fragment.userData.exploded) {
+        fragment.rotation.x += 0.005;
+        fragment.rotation.y += 0.005;
+        fragment.rotation.z += 0.005;
+      }
+    });
 
     cloudParticles.forEach((cloud) => {
       cloud.rotation.z += cloud.userData.rotationSpeed;
@@ -443,12 +555,14 @@ onMounted(() => {
 
 <style scoped>
 canvas {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
   display: block;
-  z-index: 0;
+  width: 100% !important; /* fill parent width */
+  height: 100% !important; /* fill parent height */
+}
+
+.background {
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 </style>
