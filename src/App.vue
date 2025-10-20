@@ -31,7 +31,7 @@ header {
 
 nav {
   width: 100%;
-  font-size: 24px;
+  font-size: 12px;
   text-align: center;
   margin-top: 2rem;
   text-transform: uppercase;
