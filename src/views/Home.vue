@@ -1,12 +1,12 @@
 <template>
   <div class="container">
-    <section id="hero" class="hero" title="Welcome">
+    <section id="hero" class="hero">
       <backgroundScene />
       <div class="triangle-divider"></div>
     </section>
-    <section id="who" title="Who am I"></section>
-    <section id="work" title="Work"></section>
-    <section id="contact" title="Contact"></section>
+    <section id="who"></section>
+    <section id="work"></section>
+    <section id="contact"></section>
   </div>
 </template>
 
