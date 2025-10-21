@@ -1,7 +1,3 @@
-<script setup lang="ts">
-import { RouterView } from 'vue-router';
-</script>
-
 <template>
   <div class="container">
     <header>
@@ -20,6 +16,10 @@ import { RouterView } from 'vue-router';
     <RouterView />
   </div>
 </template>
+
+<script setup lang="ts">
+import { RouterView } from 'vue-router';
+</script>
 
 <style scoped>
 header {

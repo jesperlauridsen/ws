@@ -1,5 +1,11 @@
 <template>
   <div class="background">
+    <div class="overlay">
+      <div class="top-left-corner"></div>
+      <div class="bottom-right-corner"></div>
+      <div class="top-right-corner"></div>
+      <div class="bottom-left-corner"></div>
+    </div>
     <canvas ref="canvas"></canvas>
   </div>
 </template>
@@ -34,6 +40,7 @@ const raycaster = new THREE.Raycaster();
 const threshold = 0.4;
 const fragments: THREE.Mesh[] = [];
 let sceneReady = false;
+let isInView = true;
 const stats = new Stats();
 stats.showPanel(0); // 0: fps, 1: ms, 2: mb
 document.body.appendChild(stats.dom);
@@ -92,8 +99,6 @@ onMounted(() => {
   };
 
   loader.load(fraURL, function (fractureTexture) {
-    console.log(fractureTexture, 'fracture');
-
     fractureTexture.wrapS = THREE.RepeatWrapping;
     fractureTexture.wrapT = THREE.RepeatWrapping;
     fractureTexture.repeat.set(1, 1);
@@ -129,7 +134,6 @@ onMounted(() => {
       logo.position.set(0, 0, -5);
       logo.scale.set(0.4, 0.4, 0.4);
       logo.rotation.x = Math.PI / 2;
-      console.log('Loaded logo model:', logo);
       baseRotation = logo.rotation.clone();
       logo.traverse((child: THREE.Object3D) => {
         if ((child as THREE.Mesh).isMesh) {
@@ -137,7 +141,6 @@ onMounted(() => {
           mesh.material = material;
           mesh.userData.initCoords = mesh.position.clone();
           mesh.userData.initRotation = mesh.rotation.clone();
-          console.log('initial coords', mesh.userData.initCoords);
           mesh.castShadow = false;
           mesh.receiveShadow = false;
           fragments.push(mesh);
@@ -493,9 +496,29 @@ onMounted(() => {
     }
   });
 
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        isInView = entry.isIntersecting;
+        if (isInView) {
+          console.log('IN VIEW - RESUME ANIMATION');
+          // Restart animation when visible again
+          requestAnimationFrame(animate);
+        } else {
+          console.log('OUT OF VIEW - PAUSE ANIMATION');
+        }
+      });
+    },
+    { threshold: 0.1 }, // how much needs to be visible before triggering
+  );
+
+  observer.observe(canvas.value);
+
   // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
+    if (!isInView) return; // Skip frame if not visible
+
     getObjectsNearCursor(fragments, camera);
     updateLogoRotation();
     const currentTime = Date.now();
@@ -564,5 +587,71 @@ canvas {
   width: 100%;
   height: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.overlay {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding-left: 14px;
+  padding-right: 14px;
+  box-sizing: border-box;
+  position: absolute;
+  height: 60vh;
+  top: 180px;
+  align-items: center;
+}
+
+@media (max-width: 1040px) {
+  .overlay {
+    margin-left: 10px;
+    margin-right: 10px;
+    width: calc(100% - 20px);
+  }
+}
+
+.top-left-corner,
+.bottom-right-corner,
+.top-right-corner,
+.bottom-left-corner {
+  width: 10px;
+  height: 10px;
+  border: 1px solid transparent;
+  border-image: linear-gradient(45deg, #ffffff, #ffffff);
+  border-image-slice: 1;
+  position: absolute;
+}
+
+.top-left-corner {
+  top: 0;
+  left: 0;
+  border-top-left-radius: 8px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.bottom-right-corner {
+  bottom: 0;
+  right: 0;
+  border-bottom-right-radius: 8px;
+  border-left: none;
+  border-top: none;
+}
+.top-right-corner {
+  top: 0;
+  right: 0;
+  border-top-right-radius: 8px;
+  border-left: none;
+  border-bottom: none;
+}
+.bottom-left-corner {
+  bottom: 0;
+  left: 0;
+  border-bottom-left-radius: 8px;
+  border-right: none;
+  border-top: none;
 }
 </style>
