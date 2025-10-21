@@ -2,6 +2,12 @@
   <div class="container">
     <section id="hero" class="hero">
       <backgroundScene />
+      <div>
+        <span class="name">Jesper Lauridsen</span>
+        <span class="title">Creative</span>
+        <span class="title">Frontend</span>
+        <span class="title">Developer</span>
+      </div>
       <div class="triangle-divider"></div>
     </section>
     <section id="who"></section>
