@@ -10,12 +10,12 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+//import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import gsap from 'gsap';
 import Stats from 'stats.js';
-import noiseURL from '@/assets/noise.png';
+//import noiseURL from '@/assets/noise.png';
 import nebularURL from '@/assets/test2.png';
 import fraURL from '@/assets/fra.png';
 import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
@@ -119,11 +119,11 @@ onMounted(() => {
     cubeR.position.set(0, 0, -5);
     //scene.add(cubeR);
     // load in model from assets/codelogo.glb
-    gltfloader.load(celllogoURL, (gltf: { scene: any }) => {
-      const testMaterial = new THREE.MeshPhongMaterial({
+    gltfloader.load(celllogoURL, (gltf: { scene: THREE.Object3D }) => {
+      /* const testMaterial = new THREE.MeshPhongMaterial({
         color: 0xffffff,
         side: THREE.DoubleSide,
-      });
+      }); */
       logo = gltf.scene;
       scene.add(logo);
       logo.position.set(0, 0, -5);
@@ -160,7 +160,7 @@ onMounted(() => {
 
       // Mousemove → rotate on X and Z
       window.addEventListener('mousemove', (event) => {
-        sceneReady === false ? (sceneReady = true) : null;
+        if (!sceneReady) sceneReady = true;
         lastMouseMove = Date.now();
         isIdle = false;
 
@@ -233,7 +233,7 @@ onMounted(() => {
   const cloudParticles: THREE.Mesh[] = [];
 
   //  PointLight to Scene
-  let blueLight = new THREE.PointLight(0x3677ac, 50, 450, 1.7);
+  const blueLight = new THREE.PointLight(0x3677ac, 50, 450, 1.7);
   blueLight.position.set(0, 0, 0);
   scene.add(blueLight);
 
@@ -245,10 +245,10 @@ onMounted(() => {
 
   // Smoke Loaders
   loader.load(nebularURL, function (texture) {
-    let number = Math.floor(Math.random() * smokeColors.length);
-    let cloudGeo = new THREE.PlaneGeometry(250, 250);
+    const number = Math.floor(Math.random() * smokeColors.length);
+    const cloudGeo = new THREE.PlaneGeometry(250, 250);
     console.log(texture, 'nebula');
-    let cloudMaterial = new THREE.MeshPhongMaterial({
+    const cloudMaterial = new THREE.MeshPhongMaterial({
       map: texture,
       //transparent: true,
       depthWrite: false,
@@ -262,11 +262,11 @@ onMounted(() => {
     });
 
     for (let p = 0; p < 10; p++) {
-      let material = cloudMaterial.clone();
-      let colorIndex = Math.floor(Math.random() * smokeColors.length);
+      const material = cloudMaterial.clone();
+      const colorIndex = Math.floor(Math.random() * smokeColors.length);
       material.color = smokeColors[colorIndex].clone();
       material.emissive = smokeColors[colorIndex].clone();
-      let cloud = new THREE.Mesh(cloudGeo, material);
+      const cloud = new THREE.Mesh(cloudGeo, material);
       cloud.position.set(Math.random() * 300 - 150, Math.random() * 400 - 200, -200);
 
       cloud.userData = {
