@@ -1,8 +1,7 @@
 <template>
   <div class="container">
     <div class="content">
-      <h2>WHO AM I</h2>
-      Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+      <Headline text="What the !@#? is this?" />
       <p>
         I am Jesper Lauridsen, a creative frontend developer with a passion for crafting engaging
         and user-friendly web experiences. With a strong background in web technologies and design
@@ -25,6 +24,7 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue';
+import Headline from './FirstHeadline.vue';
 onMounted(() => {
   console.log('WhoContent component mounted');
 });

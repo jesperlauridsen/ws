@@ -4,11 +4,11 @@
       <div class="wrapper">
         <nav>
           <a href="#hero">Home</a>
-          <a href="#who">Who Am I</a>
+          <a href="#who">What the !@#? is this?</a>
           <div class="logo-container">
             <span class="logo"><span class="logo-line"></span></span>
           </div>
-          <a href="#work">Work</a>
+          <a href="#work">The Journey so far</a>
           <a href="#contact">Contact</a>
         </nav>
       </div>

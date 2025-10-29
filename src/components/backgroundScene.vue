@@ -1,10 +1,10 @@
 <template>
   <div class="background">
     <div class="overlay">
-      <div class="top-left-corner"></div>
-      <div class="bottom-right-corner"></div>
-      <div class="top-right-corner"></div>
-      <div class="bottom-left-corner"></div>
+      <div class="top-left-corner corner"></div>
+      <div class="bottom-right-corner corner"></div>
+      <div class="top-right-corner corner"></div>
+      <div class="bottom-left-corner corner"></div>
     </div>
     <canvas ref="canvas"></canvas>
   </div>
@@ -623,6 +623,10 @@ canvas {
   border-image: linear-gradient(45deg, #ffffff, #ffffff);
   border-image-slice: 1;
   position: absolute;
+}
+
+.corner {
+  opacity: 0.45;
 }
 
 .top-left-corner {
