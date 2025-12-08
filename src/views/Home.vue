@@ -17,14 +17,20 @@
     <section id="who">
       <WhoContent />
     </section>
-    <section id="work"></section>
-    <section id="contact"></section>
+    <section id="work">
+      <Journey />
+    </section>
+    <section id="contact">
+      <Contact />
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import backgroundScene from '@/components/BackgroundScene.vue';
 import WhoContent from '@/components/WhoContent.vue';
+import Journey from '@/components/Journey.vue';
+import Contact from '@/components/Contact.vue';
 </script>
 
 <style scoped>

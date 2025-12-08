@@ -1,8 +1,9 @@
 <template>
   <div class="container">
+    <Orb />
     <div class="content">
       <Headline text="What the !@#? is this?" />
-      <p>
+      <!-- <p>
         I am Jesper Lauridsen, a creative frontend developer with a passion for crafting engaging
         and user-friendly web experiences. With a strong background in web technologies and design
         principles, I specialize in building responsive and visually appealing websites that
@@ -17,7 +18,7 @@
       <p>
         When I'm not coding, I enjoy exploring new design trends, contributing to open-source
         projects, and enhancing my skills through various online courses and workshops.
-      </p>
+      </p> -->
     </div>
   </div>
 </template>
@@ -25,6 +26,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import Headline from './FirstHeadline.vue';
+import Orb from './Orb.vue';
 onMounted(() => {
   console.log('WhoContent component mounted');
 });
@@ -36,6 +38,8 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   color: white;
+  position: relative;
+  min-height: 100vh;
 }
 
 .content {

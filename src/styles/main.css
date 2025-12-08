@@ -1,5 +1,12 @@
 @import './fonts.css';
 
+:root {
+  --size: 40px;
+  --thin: 1px;
+  --color: rgba(0, 0, 0, 0.28);
+  --thick-color: rgba(0, 0, 0, 0.12);
+}
+
 body {
   font-family: 'Poppins', sans-serif;
   margin: 0;

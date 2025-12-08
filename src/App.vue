@@ -1,15 +1,15 @@
 <template>
   <div class="container">
-    <header>
+    <header :class="{ 'blend-mode': hasScrolledPastHero }">
       <div class="wrapper">
         <nav>
-          <a href="#hero">Home</a>
-          <a href="#who">What the !@#? is this?</a>
+          <a href="#hero"><span class="number">01</span>Home</a>
+          <a href="#who"><span class="number">02</span>What the !@#? is this?</a>
           <div class="logo-container">
             <span class="logo"><span class="logo-line"></span></span>
           </div>
-          <a href="#work">The Journey so far</a>
-          <a href="#contact">Contact</a>
+          <a href="#work"><span class="number">03</span>The Journey so far</a>
+          <a href="#contact"><span class="number">04</span>Contact</a>
         </nav>
       </div>
     </header>
@@ -19,6 +19,22 @@
 
 <script setup lang="ts">
 import { RouterView } from 'vue-router';
+import { ref, onMounted, onUnmounted } from 'vue';
+
+const hasScrolledPastHero = ref(false);
+
+onMounted(() => {
+  const handleScroll = () => {
+    hasScrolledPastHero.value = window.scrollY > window.innerHeight;
+  };
+
+  window.addEventListener('scroll', handleScroll);
+  handleScroll();
+
+  onUnmounted(() => {
+    window.removeEventListener('scroll', handleScroll);
+  });
+});
 </script>
 
 <style scoped>
@@ -29,6 +45,15 @@ header {
   top: 0;
   left: 0;
   z-index: 10;
+  color: white;
+  transition:
+    mix-blend-mode 0.4s ease,
+    color 0.4s ease;
+}
+
+/* Only applies the blend effect after scrolling past hero */
+header.blend-mode {
+  mix-blend-mode: difference;
 }
 
 nav {
@@ -49,6 +74,11 @@ nav {
   align-items: center;
   margin-left: 20px;
   margin-right: 20px;
+}
+
+.number {
+  color: #7c7c7cf3;
+  margin-right: 3px;
 }
 
 .logo-line {

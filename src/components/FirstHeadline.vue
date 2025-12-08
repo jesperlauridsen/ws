@@ -1,14 +1,11 @@
 <template>
-  <h2 ref="headlineRef" class="headline" :aria-label="text" :data-visible="isVisible">
+  <h2 ref="headlineRef" class="headline" :aria-label="text">
     <span v-for="(word, wordIndex) in chars" :key="`word-${wordIndex}`" class="headline-word">
       <span
         v-for="(char, charIndex) in word"
         :key="`char-${wordIndex}-${charIndex}`"
         class="headline-char"
         :data-char="char"
-        :style="{
-          '--delay': `${(wordIndex * 10 + charIndex) * 20}ms`,
-        }"
       >
         {{ char }}
       </span>
@@ -18,6 +15,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
+import gsap from 'gsap';
 
 export default defineComponent({
   name: 'Headline',
@@ -28,10 +26,8 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const chars = computed(() => props.text.split(' ').map((word) => Array.from(word)));
     const headlineRef = ref<HTMLElement | null>(null);
-    const isVisible = ref(false);
-
+    const chars = computed(() => props.text.split(' ').map((word) => Array.from(word)));
     let observer: IntersectionObserver | null = null;
 
     onMounted(() => {
@@ -41,8 +37,8 @@ export default defineComponent({
         (entries) => {
           entries.forEach((entry) => {
             if (entry.isIntersecting) {
-              isVisible.value = true;
-              observer?.unobserve(entry.target); // animate once
+              animateHeadline();
+              observer?.unobserve(entry.target);
             }
           });
         },
@@ -52,11 +48,15 @@ export default defineComponent({
       observer.observe(headlineRef.value);
     });
 
+    const animateHeadline = () => {
+      if (!headlineRef.value) return;
+    };
+
     onUnmounted(() => {
       observer?.disconnect();
     });
 
-    return { chars, headlineRef, isVisible };
+    return { headlineRef, chars };
   },
 });
 </script>
@@ -68,68 +68,22 @@ export default defineComponent({
   margin: 0;
   padding: 0;
   font-size: 3rem;
-  font-weight: 700;
-  position: relative;
+  font-weight: 100;
   color: white;
+  position: relative;
+}
+
+.headline-word {
+  display: inline-block;
+  margin-right: 0.5rem;
+  white-space: pre;
 }
 
 .headline-char {
-  font-family: 'Poppins';
-  position: relative;
   display: inline-block;
   white-space: pre;
-  opacity: 0;
-  transform: translateX(20px);
-  filter: blur(6px);
-  transition:
-    opacity 0.4s ease var(--delay),
-    filter 0.4s ease var(--delay),
-    transform 0.4s ease var(--delay);
-}
-
-/* pseudo layers for RGB distortion */
-.headline-char::before,
-.headline-char::after {
-  content: attr(data-char);
-  position: absolute;
-  top: 0;
-  left: 0;
-  opacity: 0.6;
-  mix-blend-mode: screen;
-  pointer-events: none;
-  filter: blur(2px);
-  transition:
-    opacity 1.6s ease var(--delay),
-    transform 1.6s ease var(--delay);
-}
-
-.headline-char::before {
-  color: #00ffff;
-  transform: translateX(-10px);
-}
-.headline-char::after {
-  color: #ff00ff;
-  transform: translateX(10px);
-}
-
-/* When visible, main letter appears */
-.headline[data-visible='true'] .headline-char {
+  font-family: 'Poppins';
+  position: relative;
   opacity: 1;
-  transform: translateX(0);
-  filter: blur(0px);
 }
-
-/* pseudo layers fade/merge with the same stagger */
-.headline[data-visible='true'] .headline-char::before,
-.headline[data-visible='true'] .headline-char::after {
-  opacity: 0;
-  transform: translateX(0);
-}
-
-/* hover glow effect */
-/* .headline-char {
-  text-shadow:
-    0 0 8px rgba(0, 255, 255, 0.5),
-    0 0 8px rgba(255, 0, 255, 0.5);
-} */
 </style>
