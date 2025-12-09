@@ -17,6 +17,7 @@ import gsap from 'gsap';
 import Stats from 'stats.js';
 import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
 import orbURL from '@/assets/orb.glb?url';
+import diaURL from '@/assets/diamond-texture2.png?url';
 
 type Orb = {
   base: THREE.Mesh;
@@ -31,6 +32,7 @@ let isInView = true;
 const stats = new Stats();
 stats.showPanel(0); // 0: fps, 1: ms, 2: mb
 document.body.appendChild(stats.dom);
+const started = ref(false);
 
 onMounted(() => {
   if (!canvas2.value) return;
@@ -38,7 +40,6 @@ onMounted(() => {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.z = 4;
-
   const renderer = new THREE.WebGLRenderer({
     canvas: canvas2.value!,
     antialias: true,
@@ -51,6 +52,8 @@ onMounted(() => {
 
   const materials = new Map<THREE.Mesh, THREE.Material>();
   const gltfloader = new GLTFLoader();
+  const loader = new THREE.TextureLoader();
+
   // Layer management
   const BLOOM_SCENE = 1;
   const bloomLayer = new THREE.Layers();
@@ -60,40 +63,65 @@ onMounted(() => {
   const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
   scene.add(ambientLight);
 
-  const pointLight = new THREE.PointLight(0xffffff, 1);
-  pointLight.position.set(0, 0, 0);
+  const pointLight = new THREE.PointLight(0xf0ffff, 50);
+  pointLight.position.set(0, 0, 5);
   scene.add(pointLight);
 
   let orb: THREE.Object3D;
   let leftSideOrb: THREE.Object3D;
   let rightSideOrb: THREE.Object3D;
 
-  gltfloader.load(orbURL, (gltf: { scene: THREE.Object3D }) => {
-    orb = gltf.scene;
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xff0000, // Base color
-      specular: 0xffffff, // Highlight color (white = strong shine)
-      shininess: 80, // Higher = sharper highlights
-      emissive: 0x112244, // Soft glow from inside
-      emissiveIntensity: 0.4, // Subtle, not overdone
-      flatShading: false, // Smooth look
-    });
-    orb.children.forEach((child, index) => {
-      if (index === 1 || index === 2) {
-        child.visible = false; // Hide the core sphere
-      }
-      if (index === 0) {
-        leftSideOrb = child;
-      }
-      if (index === 3) {
-        rightSideOrb = child;
-      }
-      let mesh = child as THREE.Mesh;
-      mesh.material = material;
-    });
-    scene.add(orb);
-  });
+  loader.load(diaURL, function (fractureTexture) {
+    fractureTexture.wrapS = THREE.RepeatWrapping;
+    fractureTexture.wrapT = THREE.RepeatWrapping;
+    fractureTexture.repeat.set(1, 1);
 
+    const stdMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: fractureTexture,
+      transparent: true,
+      opacity: 1,
+      roughness: 0.5,
+      metalness: 0.95,
+      side: THREE.DoubleSide,
+      bumpMap: fractureTexture, // bump map from same texture
+      bumpScale: 2.5, // tweak for depth intensity
+    });
+
+    const material = new THREE.MeshPhongMaterial({
+      color: 0xfff,
+      map: fractureTexture,
+      transparent: true,
+      refractionRatio: 25,
+      opacity: 0.1,
+      blending: THREE.AdditiveBlending,
+      bumpMap: fractureTexture, // bump map from same texture
+      bumpScale: 0.5, // tweak for depth intensity
+      depthWrite: true,
+      side: THREE.DoubleSide,
+      depthTest: true,
+    });
+
+    gltfloader.load(orbURL, (gltf: { scene: THREE.Object3D }) => {
+      orb = gltf.scene;
+      orb.children.forEach((child, index) => {
+        console.log('name of child:', child.name);
+        let mesh = child as THREE.Mesh;
+        mesh.material = stdMaterial;
+        mesh.layers.enable(BLOOM_SCENE);
+        if (index === 1 || index === 2) {
+          child.visible = false; // Hide the core sphere
+        }
+        if (index === 0) {
+          leftSideOrb = child;
+        }
+        if (index === 3) {
+          rightSideOrb = child;
+        }
+      });
+      scene.add(orb);
+    });
+  });
   // Create a render target for the bloom pass
   const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
 
@@ -194,12 +222,21 @@ onMounted(() => {
     }
   });
 
+  const executeStartSequence = () => {
+    console.log('START SEQUENCE EXECUTED');
+    // Add any startup animations or effects here
+  };
+
   const observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
         isInView = entry.isIntersecting;
         if (isInView) {
           console.log('IN VIEW - RESUME ANIMATION');
+          if (started.value === false) {
+            executeStartSequence();
+            started.value = true;
+          }
           // Restart animation when visible again
           requestAnimationFrame(animate);
         } else {
