@@ -63,7 +63,7 @@ onMounted(() => {
   const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
   scene.add(ambientLight);
 
-  const pointLight = new THREE.PointLight(0xf0ffff, 50);
+  const pointLight = new THREE.PointLight(0xf0ffff, 10);
   pointLight.position.set(0, 0, 5);
   scene.add(pointLight);
 
@@ -102,13 +102,68 @@ onMounted(() => {
       depthTest: true,
     });
 
+    const circles: THREE.Object3D[] = [];
+    const circleSpins: gsap.core.Tween[] = [];
+
     gltfloader.load(orbURL, (gltf: { scene: THREE.Object3D }) => {
+      const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
       orb = gltf.scene;
       orb.children.forEach((child, index) => {
         console.log('name of child:', child.name);
         let mesh = child as THREE.Mesh;
         mesh.material = stdMaterial;
         mesh.layers.enable(BLOOM_SCENE);
+        if (child.name === 'inner-ball') {
+          const innerMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.5,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+          });
+          mesh.material = innerMaterial;
+          console.log('here!');
+        }
+        if (child.name.includes('circle')) {
+          circles.push(child);
+          const glassMaterial = new THREE.MeshPhysicalMaterial({
+            color: colors[index % colors.length],
+
+            // transparency / glass
+            transparent: true,
+            transmission: 1.0, // enables real glass refraction
+            opacity: 1.0,
+
+            // surface quality
+            roughness: 0.05,
+            metalness: 0.0,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.05,
+
+            // thickness & refraction
+            thickness: 0.6, // adjust based on scale
+            ior: 1.45, // glass index of refraction
+
+            // lighting response
+            envMapIntensity: 1.2,
+
+            side: THREE.DoubleSide,
+          });
+          mesh.material = glassMaterial;
+          // different speed per circle
+          const duration = gsap.utils.random(8, 16); // seconds per rotation
+          console.log(`Circle ${index} duration:`, duration);
+          const spin = gsap.to(child.rotation, {
+            y: '+=6.28318530718', // 2π
+            x: '+=6.28318530718', // 2π
+            z: '+=6.28318530718', // 2π
+            duration,
+            repeat: -1,
+            ease: 'none',
+          });
+
+          circleSpins.push(spin);
+        }
         if (index === 1 || index === 2) {
           child.visible = false; // Hide the core sphere
         }
