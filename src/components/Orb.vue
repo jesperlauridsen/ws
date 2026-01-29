@@ -70,6 +70,7 @@ onMounted(() => {
   let orb: THREE.Object3D;
   let leftSideOrb: THREE.Object3D;
   let rightSideOrb: THREE.Object3D;
+  const rigns: THREE.Object3D[] = [];
 
   loader.load(diaURL, function (fractureTexture) {
     fractureTexture.wrapS = THREE.RepeatWrapping;
@@ -126,30 +127,69 @@ onMounted(() => {
         }
         if (child.name.includes('circle')) {
           circles.push(child);
-          const glassMaterial = new THREE.MeshPhysicalMaterial({
-            color: colors[index % colors.length],
-
-            // transparency / glass
+          const glassMaterial = new THREE.ShaderMaterial({
             transparent: true,
-            transmission: 1.0, // enables real glass refraction
-            opacity: 1.0,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending,
+            uniforms: {
+              uTime: { value: 0 },
+              uColor: { value: new THREE.Color(colors[index % colors.length]) },
+              uOpacity: { value: 0.8 },
+              uGlowStrength: { value: 1.5 },
+            },
+            vertexShader: `
+              varying vec2 vUv;
+              varying vec3 vPos;
 
-            // surface quality
-            roughness: 0.05,
-            metalness: 0.0,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
+              void main() {
+                vUv = uv;
+                vPos = position;
 
-            // thickness & refraction
-            thickness: 0.6, // adjust based on scale
-            ior: 1.45, // glass index of refraction
+                gl_Position = projectionMatrix *
+                              modelViewMatrix *
+                              vec4(position, 1.0);
+              }
+            `,
+            fragmentShader: `
+            uniform float uTime;
+            uniform vec3 uColor;
+            uniform float uOpacity;
+            uniform float uGlowStrength;
 
-            // lighting response
-            envMapIntensity: 1.2,
+            varying vec2 vUv;
+            varying vec3 vPos;
 
-            side: THREE.DoubleSide,
+            float noise(vec2 p) {
+              return sin(p.x) * sin(p.y);
+            }
+
+            void main() {
+              // Move UVs over time
+              vec2 uv = vUv * 6.0;
+              uv.x += uTime * 0.4;
+              uv.y += sin(uTime * 0.2);
+
+              // Procedural noise
+              float n = noise(uv + uTime);
+
+              // Opacity mask (transparent in places)
+              float alphaMask = smoothstep(0.1, 0.6, n);
+
+              // Glow mask
+              float glow = smoothstep(0.3, 1.0, n) * uGlowStrength;
+
+              vec3 color = uColor * glow;
+
+              gl_FragColor = vec4(color, alphaMask * uOpacity);
+
+              // Kill very transparent fragments
+              if (gl_FragColor.a < 0.02) discard;
+            }
+          `,
           });
+
           mesh.material = glassMaterial;
+          rigns.push(child);
           // different speed per circle
           const duration = gsap.utils.random(8, 16); // seconds per rotation
           console.log(`Circle ${index} duration:`, duration);
@@ -310,6 +350,13 @@ onMounted(() => {
     if (!isInView) return; // Skip frame if not visible
 
     stats.begin();
+
+    rigns.forEach((ring) => {
+      if (ring instanceof THREE.Mesh && ring.material instanceof THREE.ShaderMaterial) {
+        const material = ring.material;
+        material.uniforms.uTime.value = clock.getElapsedTime();
+      }
+    });
 
     //make the leftSideOrb and the rightsideOrb move away from eachother and back again.
     const time = clock.getElapsedTime();
