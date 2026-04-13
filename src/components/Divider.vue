@@ -28,8 +28,9 @@ export default defineComponent({
   width: 100%;
   height: 60px;
   margin-top: -60px;
-  clip-path: polygon(100% 0, 0% 100%, 100% 100%);
-  -webkit-clip-path: polygon(100% 0, 0% 100%, 100% 100%);
+  clip-path: polygon(0 0, 0% 100%, 100% 100%);
+  -webkit-clip-path: polygon(0 0, 0% 100%, 100% 100%);
+  z-index: 1;
 }
 
 .tri-left {
@@ -38,5 +39,6 @@ export default defineComponent({
   height: 60px;
   clip-path: polygon(0 0, 100% 0, 0 100%); /* right triangle (left half) */
   -webkit-clip-path: polygon(0 0, 100% 0, 0 100%);
+  z-index: 1;
 }
 </style>

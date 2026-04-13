@@ -29,9 +29,9 @@ const canvas2 = ref<HTMLCanvasElement | null>(null);
 const mouse = new THREE.Vector2();
 const raycaster = new THREE.Raycaster();
 let isInView = true;
-const stats = new Stats();
-stats.showPanel(0); // 0: fps, 1: ms, 2: mb
-document.body.appendChild(stats.dom);
+//const stats = new Stats();
+//stats.showPanel(0); // 0: fps, 1: ms, 2: mb
+//document.body.appendChild(stats.dom);
 const started = ref(false);
 
 onMounted(() => {
@@ -39,7 +39,7 @@ onMounted(() => {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 4;
+  camera.position.z = 12;
   const renderer = new THREE.WebGLRenderer({
     canvas: canvas2.value!,
     antialias: true,
@@ -81,33 +81,32 @@ onMounted(() => {
       color: 0xffffff,
       map: fractureTexture,
       transparent: true,
+      flatShading: false,
       opacity: 1,
       roughness: 0.5,
-      metalness: 0.95,
+      metalness: 0.99,
       side: THREE.DoubleSide,
       bumpMap: fractureTexture, // bump map from same texture
-      bumpScale: 2.5, // tweak for depth intensity
-    });
-
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xfff,
-      map: fractureTexture,
-      transparent: true,
-      refractionRatio: 25,
-      opacity: 0.1,
-      blending: THREE.AdditiveBlending,
-      bumpMap: fractureTexture, // bump map from same texture
-      bumpScale: 0.5, // tweak for depth intensity
-      depthWrite: true,
-      side: THREE.DoubleSide,
-      depthTest: true,
+      bumpScale: 0, // tweak for depth intensity
     });
 
     const circles: THREE.Object3D[] = [];
     const circleSpins: gsap.core.Tween[] = [];
 
     gltfloader.load(orbURL, (gltf: { scene: THREE.Object3D }) => {
-      const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+      const colors = [
+        // Orange tints (30–35%)
+        0xffb380, // 30% orange
+        0xffa64d, // 35% orange
+
+        // Dark blue tints (30–35%)
+        0xb3b3e6, // 30% dark blue
+        0x9999ff, // 35% dark blue
+
+        // Purple tints (30–35%)
+        0xd199d1, // 30% purple
+        0xc066c0, // 35% purple
+      ];
       orb = gltf.scene;
       orb.children.forEach((child, index) => {
         console.log('name of child:', child.name);
@@ -138,17 +137,19 @@ onMounted(() => {
               uGlowStrength: { value: 1.5 },
             },
             vertexShader: `
-              varying vec2 vUv;
-              varying vec3 vPos;
+             varying vec2 vUv;
+            varying vec3 vPos;
+            varying vec3 vNormal;
 
-              void main() {
-                vUv = uv;
-                vPos = position;
+            void main() {
+              vUv = uv;
+              vPos = position;
+              vNormal = normalize(normalMatrix * normal);
 
-                gl_Position = projectionMatrix *
-                              modelViewMatrix *
-                              vec4(position, 1.0);
-              }
+              gl_Position = projectionMatrix *
+                            modelViewMatrix *
+                            vec4(position, 1.0);
+            }
             `,
             fragmentShader: `
             uniform float uTime;
@@ -166,17 +167,17 @@ onMounted(() => {
             void main() {
               // Move UVs over time
               vec2 uv = vUv * 6.0;
-              uv.x += uTime * 0.4;
+              uv.x += uTime * 0.1;
               uv.y += sin(uTime * 0.2);
 
               // Procedural noise
               float n = noise(uv + uTime);
 
               // Opacity mask (transparent in places)
-              float alphaMask = smoothstep(0.1, 0.6, n);
+              float alphaMask = smoothstep(0.1, 0.9, n);
 
               // Glow mask
-              float glow = smoothstep(0.3, 1.0, n) * uGlowStrength;
+              float glow = smoothstep(0.3, 1.0, n) * uGlowStrength ;
 
               vec3 color = uColor * glow;
 
@@ -190,6 +191,11 @@ onMounted(() => {
 
           mesh.material = glassMaterial;
           rigns.push(child);
+          child.rotation.set(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+          );
           // different speed per circle
           const duration = gsap.utils.random(8, 16); // seconds per rotation
           console.log(`Circle ${index} duration:`, duration);
@@ -209,9 +215,19 @@ onMounted(() => {
         }
         if (index === 0) {
           leftSideOrb = child;
+          if (child instanceof THREE.Mesh && child.geometry) {
+            child.geometry.computeVertexNormals();
+            child.material.flatShading = false;
+            child.material.needsUpdate = true;
+          }
         }
         if (index === 3) {
           rightSideOrb = child;
+          if (child instanceof THREE.Mesh && child.geometry) {
+            child.geometry.computeVertexNormals();
+            child.material.flatShading = false;
+            child.material.needsUpdate = true;
+          }
         }
       });
       scene.add(orb);
@@ -287,6 +303,7 @@ onMounted(() => {
   });
 
   window.addEventListener('mousemove', (event) => {
+    if (isInView === false) return; // Skip if not visible
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
@@ -319,6 +336,7 @@ onMounted(() => {
 
   const executeStartSequence = () => {
     console.log('START SEQUENCE EXECUTED');
+
     // Add any startup animations or effects here
   };
 
@@ -349,33 +367,49 @@ onMounted(() => {
   const animate = () => {
     if (!isInView) return; // Skip frame if not visible
 
-    stats.begin();
+    //stats.begin();
 
     rigns.forEach((ring) => {
       if (ring instanceof THREE.Mesh && ring.material instanceof THREE.ShaderMaterial) {
         const material = ring.material;
-        material.uniforms.uTime.value = clock.getElapsedTime();
+        //material.uniforms.uTime.value = clock.getElapsedTime();
       }
     });
 
     //make the leftSideOrb and the rightsideOrb move away from eachother and back again.
     const time = clock.getElapsedTime();
-    if (leftSideOrb && rightSideOrb) {
+
+    /* if (leftSideOrb && rightSideOrb) {
       leftSideOrb.position.x = Math.sin(time) * 0.5 - 1;
       rightSideOrb.position.x = -Math.sin(time) * 0.5 + 1;
-    }
+
+      const maxDistance = 1.5; // tweak based on how far they travel
+
+      const leftDist = Math.abs(leftSideOrb.position.x);
+      const rightDist = Math.abs(rightSideOrb.position.x);
+
+      if (leftSideOrb instanceof THREE.Mesh && rightSideOrb instanceof THREE.Mesh) {
+        leftSideOrb.material.transparent = true;
+
+        rightSideOrb.material.transparent = true;
+
+        leftSideOrb.material.opacity = THREE.MathUtils.clamp(1 - leftDist / maxDistance, 0, 1);
+
+        rightSideOrb.material.opacity = THREE.MathUtils.clamp(1 - rightDist / maxDistance, 0, 1);
+      }
+    } */
 
     //rotate the camera around 0,0,0
-    camera.position.x = Math.sin(time * 0.1) * 8;
+    /*     camera.position.x = Math.sin(time * 0.1) * 8;
     camera.position.z = Math.cos(time * 0.1) * 8;
     camera.lookAt(0, 0, 0);
-
+ */
     requestAnimationFrame(animate);
     scene.traverse((obj) => nonBloomed(obj, bloomLayer, materials));
     bloomComposer.render();
     scene.traverse((obj) => restoreMaterial(obj, materials)); // restore real materials
     finalComposer.render();
-    stats.end();
+    //stats.end();
   };
 
   animate();

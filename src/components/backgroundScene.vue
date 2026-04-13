@@ -163,6 +163,7 @@ onMounted(() => {
 
       // Mousemove → rotate on X and Z
       window.addEventListener('mousemove', (event) => {
+        if (isInView === false) return; // Skip if not visible
         if (!sceneReady) sceneReady = true;
         lastMouseMove = Date.now();
         isIdle = false;

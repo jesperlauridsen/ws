@@ -2,6 +2,7 @@
   <Divider :left="true" color="#1e1e1e" />
   <div class="container grid-bg">
     <div class="gradient">
+      <Landscape />
       <div class="content"></div>
     </div>
   </div>
@@ -10,10 +11,12 @@
 <script lang="ts">
 import { onMounted } from 'vue';
 import Divider from './Divider.vue';
+import Landscape from './Landscape.vue';
 export default {
   name: 'Journey',
   components: {
     Divider,
+    Landscape,
   },
 };
 onMounted(() => {
