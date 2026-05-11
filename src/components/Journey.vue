@@ -1,6 +1,7 @@
 <template>
   <Divider :left="true" color="#1e1e1e" />
   <div class="container grid-bg">
+    <div class="radial-blur"></div>
     <div class="gradient">
       <Landscape />
       <div class="content"></div>
@@ -50,6 +51,42 @@ onMounted(() => {
     radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 1) 100%),
     radial-gradient(circle at 75% 80%, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 1) 100%);
   background-blend-mode: difference;
+}
+
+.radial-blur {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  /* The actual glass blur */
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+
+  /* Important: needs some background for backdrop-filter to trigger */
+  background: rgba(255, 255, 255, 0.06);
+
+  /* Radial mask: center transparent (no blur), edges opaque (full blur) */
+  mask-image: radial-gradient(
+    circle at center,
+    transparent 0%,
+    transparent 25%,
+    rgba(0, 0, 0, 0.4) 45%,
+    rgba(0, 0, 0, 0.8) 65%,
+    black 80%
+  );
+
+  -webkit-mask-image: radial-gradient(
+    circle at center,
+    transparent 0%,
+    transparent 25%,
+    rgba(0, 0, 0, 0.4) 45%,
+    rgba(0, 0, 0, 0.8) 65%,
+    black 80%
+  );
+
+  pointer-events: none; /* lets clicks pass through */
 }
 
 .grid-bg {

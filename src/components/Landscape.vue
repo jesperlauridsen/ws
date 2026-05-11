@@ -10,11 +10,11 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-//import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
-import orbURL from '@/assets/lanscape5.glb?url';
+import orbURL from '@/assets/lanscape7.glb?url';
 
 const canvas3 = ref<HTMLCanvasElement | null>(null);
 const mouse = new THREE.Vector2();
@@ -42,6 +42,7 @@ onMounted(() => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
   const materials = new Map<THREE.Mesh, THREE.Material>();
+  const controls = new OrbitControls(camera, renderer.domElement);
 
   const simpleFogMaterial = new THREE.ShaderMaterial({
     uniforms: {
@@ -102,11 +103,11 @@ onMounted(() => {
   `,
   });
   const gltfloader = new GLTFLoader();
-  const markers = [];
+  const markers: THREE.Mesh[] = [];
   let mtl = new THREE.MeshPhongMaterial({
     color: 0xffff00,
     side: THREE.DoubleSide,
-    emissive: new THREE.Color(0xff0000),
+    emissive: new THREE.Color(0xffffff),
     emissiveIntensity: 1.5,
   });
   gltfloader.load(orbURL, (gltf) => {
@@ -251,6 +252,39 @@ onMounted(() => {
 
   observer.observe(canvas3.value);
 
+  const createCameraPath = (origin: THREE.Vector3, destination: THREE.Vector3) => {
+    const mid = new THREE.Vector3().addVectors(origin, destination).multiplyScalar(0.5);
+    const center = new THREE.Vector3(0, 0, 0);
+
+    const dir = new THREE.Vector3().subVectors(mid, center).normalize();
+    const control = new THREE.Vector3().copy(center).add(dir.multiplyScalar(mid.length() * 2));
+
+    console.log('here!', origin, destination, control);
+    const curve = new THREE.QuadraticBezierCurve3(
+      origin.clone(),
+      control.clone(),
+      destination.clone(),
+    );
+
+    const points = curve.getPoints(100);
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+    const material = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+    });
+
+    const line = new THREE.Line(geometry, material);
+
+    scene.add(line);
+  };
+
+  const onClick = () => {
+    createCameraPath(camera.position.clone(), markers[0].position.clone());
+  };
+
+  document.addEventListener('click', onClick);
+
   // Animation loop
   const clock = new THREE.Clock();
   const animate = () => {
@@ -266,7 +300,7 @@ onMounted(() => {
       simpleFogMaterial.uniforms.fogFar.value = fog.far;
       simpleFogMaterial.uniforms.time.value = time * 0.5;
     }
-
+    controls.update();
     //rotate the camera around 0,0,0
     camera.position.x = Math.sin(time * 0.1) * 15;
     camera.position.z = Math.cos(time * 0.1) * 15;
