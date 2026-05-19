@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import backgroundScene from '@/components/BackgroundScene.vue';
+import backgroundScene from '@/components/backgroundScene.vue';
 import WhoContent from '@/components/WhoContent.vue';
 import Journey from '@/components/Journey.vue';
 import Contact from '@/components/Contact.vue';
