@@ -81,6 +81,7 @@ onMounted(() => {
       uRefractPower: { value: 0.22 },
       uDispersion: { value: 0.17 },
       uBrightness: { value: 0.7 },
+      uAlpha: { value: 0 },
     },
     vertexShader: `
       varying vec3 vNormal;
@@ -98,6 +99,7 @@ onMounted(() => {
       uniform float uRefractPower;
       uniform float uDispersion;
       uniform float uBrightness;
+      uniform float uAlpha;
       varying vec3 vNormal;
       varying vec3 vWorldPosition;
 
@@ -177,7 +179,7 @@ onMounted(() => {
         // Tint and brightness
         color *= uBrightness;
 
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(color, uAlpha);
       }
     `,
     transparent: true,
@@ -186,33 +188,71 @@ onMounted(() => {
 
   const gltfLoader = new GLTFLoader();
   let diamondRoot: THREE.Object3D | null = null;
-  const mouseNdc = new THREE.Vector2(0, 0);
-  const currentPos = new THREE.Vector3(0, 0, 0);
-  const targetPos = new THREE.Vector3(0, 0, 0);
+  let wireframeRoot: THREE.Object3D | null = null;
+  let sequenceStartElapsed = -1;
+  const backgroundRevealDuration = 4.35;
+  const sketchDuration = 1.5;
+  const shaderFadeDuration = 1.35;
+  const rotationStartDelay = 0.25;
+  const gemBasePosition = new THREE.Vector3(0, 0, 0);
+  const gemBaseScale = 0.62;
 
-  const handleMouseMove = (event: MouseEvent) => {
-    mouseNdc.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouseNdc.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  };
-  window.addEventListener('mousemove', handleMouseMove);
+  const wireframeMaterial = new THREE.MeshBasicMaterial({
+    color: 0xb9f3ff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
 
-  gltfLoader.load(diamondURL, (gltf) => {
-    diamondRoot = gltf.scene;
-    diamondRoot.scale.set(0.6, 0.6, 0.6);
+  diamondMaterial.transparent = true;
+  diamondMaterial.uniforms.uAlpha.value = 0;
 
-    // Center model pivot so movement/rotation stays visually centered.
-    const bounds = new THREE.Box3().setFromObject(diamondRoot);
+  const prepareGemRoot = (
+    root: THREE.Object3D,
+    scale: number,
+    material: THREE.Material,
+    offset: THREE.Vector3,
+  ) => {
+    root.scale.setScalar(scale);
+
+    const bounds = new THREE.Box3().setFromObject(root);
     const center = bounds.getCenter(new THREE.Vector3());
-    diamondRoot.position.sub(center);
+    root.position.sub(center);
+    root.position.add(offset);
 
-    diamondRoot.traverse((obj) => {
+    root.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
-        obj.material = diamondMaterial;
+        obj.material = material;
         obj.castShadow = false;
         obj.receiveShadow = false;
       }
     });
+  };
 
+  const disposeObject3D = (root: THREE.Object3D) => {
+    const geometries = new Set<THREE.BufferGeometry>();
+    root.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        geometries.add(obj.geometry);
+      }
+    });
+
+    geometries.forEach((geometry) => geometry.dispose());
+  };
+
+  gltfLoader.load(diamondURL, (gltf) => {
+    wireframeRoot = gltf.scene.clone(true);
+    diamondRoot = gltf.scene.clone(true);
+
+    // Wireframe sketch appears first, then the shader gem fades in over it.
+    prepareGemRoot(wireframeRoot, gemBaseScale, wireframeMaterial, gemBasePosition);
+    prepareGemRoot(diamondRoot, gemBaseScale, diamondMaterial, gemBasePosition);
+
+    wireframeRoot.renderOrder = 1;
+    diamondRoot.renderOrder = 2;
+
+    scene.add(wireframeRoot);
     scene.add(diamondRoot);
   });
 
@@ -233,21 +273,47 @@ onMounted(() => {
     if (!isInView || !renderer) return;
 
     const elapsed = clock.getElapsedTime();
+    const sequenceElapsed = sequenceStartElapsed >= 0 ? elapsed - sequenceStartElapsed : 0;
 
-    if (diamondRoot) {
-      targetPos.set(mouseNdc.x * 0.22, mouseNdc.y * 0.14, 0);
-      currentPos.lerp(targetPos, 0.1);
+    const sketchProgress = THREE.MathUtils.clamp(
+      (sequenceElapsed - backgroundRevealDuration) / sketchDuration,
+      0,
+      1,
+    );
+    const shaderFadeProgress = THREE.MathUtils.clamp(
+      (sequenceElapsed - backgroundRevealDuration - sketchDuration) / shaderFadeDuration,
+      0,
+      1,
+    );
+    const shaderRotationProgress = THREE.MathUtils.clamp(
+      (sequenceElapsed -
+        backgroundRevealDuration -
+        sketchDuration -
+        shaderFadeDuration -
+        rotationStartDelay) /
+        2.5,
+      0,
+      1,
+    );
 
-      /*  diamondRoot.position.x = currentPos.x;
-      diamondRoot.position.y = currentPos.y;
-      diamondRoot.position.z = currentPos.z; */
-
-      /*  diamondRoot.rotation.x = elapsed * 0.12;
-      diamondRoot.rotation.y = elapsed * 0.18;
-      diamondRoot.rotation.z = elapsed * 0.15; */
+    if (wireframeRoot) {
+      wireframeMaterial.opacity = sketchProgress;
+      wireframeRoot.scale.setScalar(gemBaseScale);
     }
 
-    //diamondMaterial.uniforms.uTime.value = elapsed;
+    if (diamondRoot) {
+      const shaderAlpha = sketchProgress >= 1 ? shaderFadeProgress : 0;
+      diamondMaterial.uniforms.uAlpha.value = shaderAlpha;
+      diamondRoot.scale.setScalar(gemBaseScale);
+
+      if (shaderAlpha >= 1) {
+        diamondRoot.rotation.x = shaderRotationProgress * 0.12;
+        diamondRoot.rotation.y = shaderRotationProgress * 0.2;
+        diamondRoot.rotation.z = shaderRotationProgress * 0.08;
+      }
+    }
+
+    diamondMaterial.uniforms.uTime.value = elapsed;
 
     renderer.render(scene, camera);
     animationFrameId = requestAnimationFrame(animate);
@@ -262,6 +328,7 @@ onMounted(() => {
           if (!started.value) {
             executeStartSequence();
             started.value = true;
+            sequenceStartElapsed = clock.getElapsedTime();
           }
 
           if (animationFrameId === 0) {
@@ -282,8 +349,6 @@ onMounted(() => {
 
   onUnmounted(() => {
     window.removeEventListener('resize', handleResize);
-    window.removeEventListener('mousemove', handleMouseMove);
-
     if (observer && canvas2.value) {
       observer.unobserve(canvas2.value);
       observer.disconnect();
@@ -297,14 +362,16 @@ onMounted(() => {
 
     if (diamondRoot) {
       scene.remove(diamondRoot);
-      diamondRoot.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose();
-        }
-      });
+      disposeObject3D(diamondRoot);
       diamondRoot = null;
     }
+    if (wireframeRoot) {
+      scene.remove(wireframeRoot);
+      disposeObject3D(wireframeRoot);
+      wireframeRoot = null;
+    }
     diamondMaterial.dispose();
+    wireframeMaterial.dispose();
     nebTexture.dispose();
     renderer?.dispose();
     renderer = null;
