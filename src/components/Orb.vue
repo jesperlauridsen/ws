@@ -373,7 +373,7 @@ canvas {
 .hud-cell-dots {
   position: absolute;
   inset: 0;
-  background: url('@/assets/dots.png') center / 58% 58% no-repeat;
+  background: url('@/assets/dots3.png') center / 58% 58% no-repeat;
   opacity: 0;
   background-size: auto;
 }
@@ -517,11 +517,9 @@ canvas {
 @keyframes dot-image-fade {
   0% {
     opacity: 0;
-    transform: scale(0.8);
   }
   100% {
-    opacity: 1;
-    transform: scale(1);
+    opacity: 0.3;
   }
 }
 
