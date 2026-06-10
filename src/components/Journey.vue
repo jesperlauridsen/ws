@@ -1,5 +1,5 @@
 <template>
-  <Divider :left="true" color="#1e1e1e" />
+  <Divider :left="true" color="#101010" />
   <div class="container grid-bg">
     <div class="radial-blur"></div>
     <div class="gradient">

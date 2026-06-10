@@ -98,8 +98,8 @@ section {
   left: 0;
   width: 0;
   height: 0;
-  border-left: 50vw solid #1e1e1e;
-  border-right: 50vw solid #1e1e1e;
+  border-left: 50vw solid #101010;
+  border-right: 50vw solid #101010;
   border-top: 60px solid #ffffff00;
   opacity: 0;
   transform-origin: top;
@@ -135,12 +135,12 @@ section:nth-of-type(1) {
   background-color: #f5f5f5;
 }
 section:nth-of-type(2) {
-  background-color: #1e1e1e;
+  background-color: #101010;
 }
 section:nth-of-type(3) {
   background-color: #f5f5f5;
 }
 section:nth-of-type(4) {
-  background-color: #1e1e1e;
+  background-color: #101010;
 }
 </style>

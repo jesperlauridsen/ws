@@ -1,418 +1,326 @@
 <template>
   <div class="background">
+    <div class="hud-grid" :class="{ revealed: started }" aria-hidden="true">
+      <div class="hud-row" v-for="row in gridRows" :key="`row-${row}`">
+        <div
+          class="hud-cell"
+          v-for="col in gridCols"
+          :key="`cell-${row}-${col}`"
+          :style="{
+            '--line-delay': `${(row + col) * Math.random() * 145 + 45}ms`,
+            '--line-opacity': `${Math.random() * 0.2 + 0.1}`,
+            '--line-duration-x': `${Math.random() * 420 + 320}ms`,
+            '--line-duration-y': `${Math.random() * 420 + 320}ms`,
+            '--cross-visible': `${Math.random() < 0.4 ? 1 : 0}`,
+            '--cross-length': `${Math.random() * 10 + 5}px`,
+            '--cross-thickness': `${Math.random() * 2 + 1}px`,
+          }"
+        >
+          <div class="hud-dot-grid">
+            <span v-for="dotRow in 7" :key="`dot-row-${row}-${col}-${dotRow}`" class="hud-dot-row">
+              <span
+                v-for="dotCol in 7"
+                :key="`dot-${row}-${col}-${dotRow}-${dotCol}`"
+                class="hud-dot"
+                :class="{ hidden: dotRow % 2 === 1 && dotCol % 2 === 1 }"
+                :style="{
+                  '--dot-delay': `${Math.random() * 220 + (dotRow - 1) * 45 + (dotCol - 1) * 30}ms`,
+                  '--dot-variance': `${(Math.random() - 0.5) * 12}%`,
+                }"
+              ></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="gradientOverlay"></div>
     <canvas ref="canvas2"></canvas>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-//import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import gsap from 'gsap';
-import Stats from 'stats.js';
-import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
-import orbURL from '@/assets/orb.glb?url';
-import diaURL from '@/assets/diamond-texture2.png?url';
+import nebURL from '@/assets/fra.png?url';
+import diamondURL from '@/assets/diamond2.glb?url';
 
-type Orb = {
-  base: THREE.Mesh;
-  bloom: THREE.Mesh;
-};
-const orbs: Orb[] = [];
-const hovered: Orb[] = [];
 const canvas2 = ref<HTMLCanvasElement | null>(null);
-const mouse = new THREE.Vector2();
-const raycaster = new THREE.Raycaster();
+const gridCols = Array.from({ length: 15 }, (_, i) => i);
+const gridRows = Array.from({ length: 8 }, (_, i) => i);
 let isInView = true;
-//const stats = new Stats();
-//stats.showPanel(0); // 0: fps, 1: ms, 2: mb
-//document.body.appendChild(stats.dom);
 const started = ref(false);
+let animationFrameId = 0;
+let observer: IntersectionObserver | null = null;
+let renderer: THREE.WebGLRenderer | null = null;
+
+const executeStartSequence = () => {
+  console.log('START SEQUENCE EXECUTED');
+};
 
 onMounted(() => {
   if (!canvas2.value) return;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.z = 12;
-  const renderer = new THREE.WebGLRenderer({
+  camera.position.z = 5;
+
+  renderer = new THREE.WebGLRenderer({
     canvas: canvas2.value!,
     antialias: true,
-    alpha: true, // allow transparency
+    alpha: true,
   });
-  renderer.setClearColor(0x000000, 0); // color, alpha = 0 → fully transparent
-
+  renderer.setClearColor(0x000000, 0);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
 
-  const materials = new Map<THREE.Mesh, THREE.Material>();
-  const gltfloader = new GLTFLoader();
-  const loader = new THREE.TextureLoader();
-
-  // Layer management
-  const BLOOM_SCENE = 1;
-  const bloomLayer = new THREE.Layers();
-  bloomLayer.set(BLOOM_SCENE);
-
-  // Lightspheres
-  const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
   scene.add(ambientLight);
 
-  const pointLight = new THREE.PointLight(0xf0ffff, 10);
-  pointLight.position.set(0, 0, 5);
-  scene.add(pointLight);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8);
+  directionalLight.position.set(2, 2, 3);
+  scene.add(directionalLight);
 
-  let orb: THREE.Object3D;
-  let leftSideOrb: THREE.Object3D;
-  let rightSideOrb: THREE.Object3D;
-  const rigns: THREE.Object3D[] = [];
+  // Load nebula texture for env/bump
+  const textureLoader = new THREE.TextureLoader();
+  const nebTexture = textureLoader.load(nebURL);
 
-  loader.load(diaURL, function (fractureTexture) {
-    fractureTexture.wrapS = THREE.RepeatWrapping;
-    fractureTexture.wrapT = THREE.RepeatWrapping;
-    fractureTexture.repeat.set(1, 1);
+  // Custom ShaderMaterial for diamond-like glass
+  const diamondMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uEnv: { value: nebTexture },
+      uRefractPower: { value: 0.22 },
+      uDispersion: { value: 0.17 },
+      uBrightness: { value: 0.7 },
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uEnv;
+      uniform float uTime;
+      uniform float uRefractPower;
+      uniform float uDispersion;
+      uniform float uBrightness;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
 
-    const stdMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      map: fractureTexture,
-      transparent: true,
-      flatShading: false,
-      opacity: 1,
-      roughness: 0.5,
-      metalness: 0.99,
-      side: THREE.DoubleSide,
-      bumpMap: fractureTexture, // bump map from same texture
-      bumpScale: 0, // tweak for depth intensity
-    });
+      vec2 envUvFromDir(vec3 dir) {
+        float u = 0.5 + atan(dir.z, dir.x) / (2.0 * 3.1415926);
+        float v = 0.5 - asin(clamp(dir.y, -1.0, 1.0)) / 3.1415926;
+        float tile = 12.0;
+        return fract(vec2(u, v) * tile);
+      }
 
-    const circles: THREE.Object3D[] = [];
-    const circleSpins: gsap.core.Tween[] = [];
+      float envDepth(vec2 uv) {
+        vec3 c = texture2D(uEnv, uv).rgb;
+        float l = dot(c, vec3(0.299, 0.587, 0.114));
+        // Invert luminance so darker regions feel "deeper".
+        return 1.0 - l;
+      }
 
-    gltfloader.load(orbURL, (gltf: { scene: THREE.Object3D }) => {
-      const colors = [
-        // Orange tints (30–35%)
-        0xffb380, // 30% orange
-        0xffa64d, // 35% orange
+      vec3 getEnv(vec3 dir, float chroma) {
+        vec2 uv = envUvFromDir(dir);
 
-        // Dark blue tints (30–35%)
-        0xb3b3e6, // 30% dark blue
-        0x9999ff, // 35% dark blue
+        // Height/parallax from env map gives pseudo depth inside refraction.
+        float depth = envDepth(uv);
+        vec2 parallaxOffset = normalize(dir.xy + vec2(0.0001)) * (depth - 0.5) * 0.045;
 
-        // Purple tints (30–35%)
-        0xd199d1, // 30% purple
-        0xc066c0, // 35% purple
-      ];
-      orb = gltf.scene;
-      orb.children.forEach((child, index) => {
-        console.log('name of child:', child.name);
-        let mesh = child as THREE.Mesh;
-        mesh.material = stdMaterial;
-        mesh.layers.enable(BLOOM_SCENE);
-        if (child.name === 'inner-ball') {
-          const innerMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffff,
-            transparent: true,
-            opacity: 0.5,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-          });
-          mesh.material = innerMaterial;
-          console.log('here!');
-        }
-        if (child.name.includes('circle')) {
-          circles.push(child);
-          const glassMaterial = new THREE.ShaderMaterial({
-            transparent: true,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-            uniforms: {
-              uTime: { value: 0 },
-              uColor: { value: new THREE.Color(colors[index % colors.length]) },
-              uOpacity: { value: 0.8 },
-              uGlowStrength: { value: 1.5 },
-            },
-            vertexShader: `
-             varying vec2 vUv;
-            varying vec3 vPos;
-            varying vec3 vNormal;
+        vec2 uvNear = fract(uv + parallaxOffset + vec2(chroma, 0.0));
+        vec2 uvFar = fract(uv - parallaxOffset * 0.65 + vec2(chroma * 0.6, 0.0));
 
-            void main() {
-              vUv = uv;
-              vPos = position;
-              vNormal = normalize(normalMatrix * normal);
+        vec3 colNear = texture2D(uEnv, uvNear).rgb;
+        vec3 colFar = texture2D(uEnv, uvFar).rgb;
 
-              gl_Position = projectionMatrix *
-                            modelViewMatrix *
-                            vec4(position, 1.0);
-            }
-            `,
-            fragmentShader: `
-            uniform float uTime;
-            uniform vec3 uColor;
-            uniform float uOpacity;
-            uniform float uGlowStrength;
+        // Blend near/far taps by depth to fake internal volume.
+        return mix(colNear, colFar, depth * 0.75);
+      }
 
-            varying vec2 vUv;
-            varying vec3 vPos;
+      void main() {
+        vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+        vec3 n = normalize(vNormal);
 
-            float noise(vec2 p) {
-              return sin(p.x) * sin(p.y);
-            }
+        // Simulate multi-facet refraction
+        float facet = abs(sin(dot(n, viewDir) * 12.0 + uTime * 0.7));
+        float refractStrength = mix(uRefractPower, uRefractPower * 2.5, facet * 0.7);
 
-            void main() {
-              // Move UVs over time
-              vec2 uv = vUv * 6.0;
-              uv.x += uTime * 0.1;
-              uv.y += sin(uTime * 0.2);
+        // Chromatic dispersion
+        vec3 refractR = refract(viewDir, n, 1.0 / (1.45 + uDispersion * 2.0));
+        vec3 refractG = refract(viewDir, n, 1.0 / (1.45 + uDispersion));
+        vec3 refractB = refract(viewDir, n, 1.0 / (1.45 - uDispersion));
 
-              // Procedural noise
-              float n = noise(uv + uTime);
+        vec3 envR = getEnv(refractR + n * refractStrength, 0.01);
+        vec3 envG = getEnv(refractG + n * refractStrength, 0.0);
+        vec3 envB = getEnv(refractB + n * refractStrength, -0.01);
 
-              // Opacity mask (transparent in places)
-              float alphaMask = smoothstep(0.1, 0.9, n);
+        // Remap dispersion bands to dark purple, pink, and orange.
+        vec3 darkPurple = vec3(0.26, 0.08, 0.40);
+        vec3 pink = vec3(1.00, 0.36, 0.70);
+        vec3 orange = vec3(1.00, 0.56, 0.20);
 
-              // Glow mask
-              float glow = smoothstep(0.3, 1.0, n) * uGlowStrength ;
+        float bandA = dot(envR, vec3(0.299, 0.587, 0.114));
+        float bandB = dot(envG, vec3(0.299, 0.587, 0.114));
+        float bandC = dot(envB, vec3(0.299, 0.587, 0.114));
 
-              vec3 color = uColor * glow;
+        vec3 color = darkPurple * bandA + pink * bandB + orange * bandC;
 
-              gl_FragColor = vec4(color, alphaMask * uOpacity);
+        // Add some sparkle
+        float sparkle = pow(facet, 8.0) * 0.7 + pow(abs(dot(n, viewDir)), 16.0) * 0.5;
+        color += sparkle * vec3(1.5, 1.7, 2.0);
 
-              // Kill very transparent fragments
-              if (gl_FragColor.a < 0.02) discard;
-            }
-          `,
-          });
+        // Simulated main light direction (should match your scene's main light)
+        vec3 lightDir = normalize(vec3(0.7, 1.0, 0.5));
+        // Simulated specular highlight (fake light bounce)
+        float spec = pow(max(dot(reflect(-lightDir, n), viewDir), 0.0), 32.0);
+        color += spec * 1.7 * vec3(1.0, 0.97, 0.85);
 
-          mesh.material = glassMaterial;
-          rigns.push(child);
-          child.rotation.set(
-            Math.random() * Math.PI * 2,
-            Math.random() * Math.PI * 2,
-            Math.random() * Math.PI * 2,
-          );
-          // different speed per circle
-          const duration = gsap.utils.random(8, 16); // seconds per rotation
-          console.log(`Circle ${index} duration:`, duration);
-          const spin = gsap.to(child.rotation, {
-            y: '+=6.28318530718', // 2π
-            x: '+=6.28318530718', // 2π
-            z: '+=6.28318530718', // 2π
-            duration,
-            repeat: -1,
-            ease: 'none',
-          });
+        // Strong Fresnel for edge reflection
+        float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 2.5);
+        color += fresnel * 1.2 * vec3(0.7, 0.85, 1.0);
 
-          circleSpins.push(spin);
-        }
-        if (index === 1 || index === 2) {
-          child.visible = false; // Hide the core sphere
-        }
-        if (index === 0) {
-          leftSideOrb = child;
-          if (child instanceof THREE.Mesh && child.geometry) {
-            child.geometry.computeVertexNormals();
-            child.material.flatShading = false;
-            child.material.needsUpdate = true;
-          }
-        }
-        if (index === 3) {
-          rightSideOrb = child;
-          if (child instanceof THREE.Mesh && child.geometry) {
-            child.geometry.computeVertexNormals();
-            child.material.flatShading = false;
-            child.material.needsUpdate = true;
-          }
-        }
-      });
-      scene.add(orb);
-    });
+        // Tint and brightness
+        color *= uBrightness;
+
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
   });
-  // Create a render target for the bloom pass
-  const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
 
-  // Postprocessing: bloom-only composer
-  const bloomComposer = new EffectComposer(renderer, renderTarget);
-  const renderScene = new RenderPass(scene, camera);
-  bloomComposer.addPass(renderScene);
+  const gltfLoader = new GLTFLoader();
+  let diamondRoot: THREE.Object3D | null = null;
+  const mouseNdc = new THREE.Vector2(0, 0);
+  const currentPos = new THREE.Vector3(0, 0, 0);
+  const targetPos = new THREE.Vector3(0, 0, 0);
 
-  const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    2.5, // strength – brighter, more intense glow
-    0.6, // radius – softer spread around edges
-    0.001, // threshold – lower to allow more to glow
-  );
-  bloomComposer.addPass(bloomPass);
-  bloomComposer.renderToScreen = false;
+  const handleMouseMove = (event: MouseEvent) => {
+    mouseNdc.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouseNdc.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  };
+  window.addEventListener('mousemove', handleMouseMove);
 
-  // Final composer for the full scene (including bloom effect)
-  const finalComposer = new EffectComposer(renderer);
-  finalComposer.addPass(renderScene);
+  gltfLoader.load(diamondURL, (gltf) => {
+    diamondRoot = gltf.scene;
+    diamondRoot.scale.set(0.6, 0.6, 0.6);
 
-  const mixPass = new ShaderPass(
-    new THREE.ShaderMaterial({
-      uniforms: {
-        baseTexture: { value: null },
-        bloomTexture: { value: bloomComposer.renderTarget2.texture },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D baseTexture;
-        uniform sampler2D bloomTexture;
-        varying vec2 vUv;
+    // Center model pivot so movement/rotation stays visually centered.
+    const bounds = new THREE.Box3().setFromObject(diamondRoot);
+    const center = bounds.getCenter(new THREE.Vector3());
+    diamondRoot.position.sub(center);
 
-        void main() {
-          vec4 base = texture2D(baseTexture, vUv);
-          vec4 bloom = texture2D(bloomTexture, vUv);
+    diamondRoot.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.material = diamondMaterial;
+        obj.castShadow = false;
+        obj.receiveShadow = false;
+      }
+    });
 
-          // Soft additive blend with some weight
-          gl_FragColor = base + vec4(bloom.rgb, 0.0);
-        }
-      `,
-    }),
-    'baseTexture',
-  );
+    scene.add(diamondRoot);
+  });
 
-  finalComposer.addPass(mixPass);
+  const clock = new THREE.Clock();
 
-  // Handle resizing
-  window.addEventListener('resize', () => {
+  const handleResize = () => {
+    if (!renderer) return;
     const width = window.innerWidth;
     const height = window.innerHeight;
 
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-
     renderer.setSize(width, height);
-    bloomComposer.setSize(width, height);
-    finalComposer.setSize(width, height);
+  };
+  window.addEventListener('resize', handleResize);
 
-    bloomPass.resolution.set(width, height);
-    mixPass.uniforms['bloomTexture'].value = bloomComposer.renderTarget2.texture;
-  });
+  const animate = () => {
+    if (!isInView || !renderer) return;
 
-  window.addEventListener('mousemove', (event) => {
-    if (isInView === false) return; // Skip if not visible
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    const elapsed = clock.getElapsedTime();
 
-    // Raycast and check which sphere is hovered
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster
-      .intersectObjects(scene.children, true)
-      .filter((i) => !i.object.userData.ignoreRaycast);
+    if (diamondRoot) {
+      targetPos.set(mouseNdc.x * 0.22, mouseNdc.y * 0.14, 0);
+      currentPos.lerp(targetPos, 0.1);
 
-    intersects.forEach((intersect) => {
-      const intersected = orbs.find((orb) => orb.base === intersect.object) || null;
-      if (intersected !== null) hovered.push(intersected);
-      if (intersected) {
-        gsap.to(intersected.bloom.material, { opacity: 1, duration: 0.5 });
-        gsap.to(intersected.base.material, { opacity: 0, duration: 0.5 });
-        intersected.base.userData.glowing = true;
-      }
-    });
-    if (intersects.length === 0) {
-      hovered.forEach((hovered) => {
-        if (hovered.base.userData.glowing) {
-          gsap.to(hovered.bloom.material, { opacity: 0, duration: 2.5 });
-          gsap.to(hovered.base.material, { opacity: 1, duration: 2.5 });
-          hovered.base.userData.glowing = false;
-        }
-      });
-      hovered.length = 0;
+      /*  diamondRoot.position.x = currentPos.x;
+      diamondRoot.position.y = currentPos.y;
+      diamondRoot.position.z = currentPos.z; */
+
+      /*  diamondRoot.rotation.x = elapsed * 0.12;
+      diamondRoot.rotation.y = elapsed * 0.18;
+      diamondRoot.rotation.z = elapsed * 0.15; */
     }
-  });
 
-  const executeStartSequence = () => {
-    console.log('START SEQUENCE EXECUTED');
+    //diamondMaterial.uniforms.uTime.value = elapsed;
 
-    // Add any startup animations or effects here
+    renderer.render(scene, camera);
+    animationFrameId = requestAnimationFrame(animate);
   };
 
-  const observer = new IntersectionObserver(
+  observer = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
         isInView = entry.isIntersecting;
+
         if (isInView) {
-          console.log('IN VIEW - RESUME ANIMATION');
-          if (started.value === false) {
+          if (!started.value) {
             executeStartSequence();
             started.value = true;
           }
-          // Restart animation when visible again
-          requestAnimationFrame(animate);
-        } else {
-          console.log('OUT OF VIEW - PAUSE ANIMATION');
+
+          if (animationFrameId === 0) {
+            animate();
+          }
+        } else if (animationFrameId !== 0) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = 0;
         }
       });
     },
-    { threshold: 0.1 }, // how much needs to be visible before triggering
+    { threshold: 0.1 },
   );
 
   observer.observe(canvas2.value);
 
-  // Animation loop
-  const clock = new THREE.Clock();
-  const animate = () => {
-    if (!isInView) return; // Skip frame if not visible
-
-    //stats.begin();
-
-    rigns.forEach((ring) => {
-      if (ring instanceof THREE.Mesh && ring.material instanceof THREE.ShaderMaterial) {
-        const material = ring.material;
-        //material.uniforms.uTime.value = clock.getElapsedTime();
-      }
-    });
-
-    //make the leftSideOrb and the rightsideOrb move away from eachother and back again.
-    const time = clock.getElapsedTime();
-
-    /* if (leftSideOrb && rightSideOrb) {
-      leftSideOrb.position.x = Math.sin(time) * 0.5 - 1;
-      rightSideOrb.position.x = -Math.sin(time) * 0.5 + 1;
-
-      const maxDistance = 1.5; // tweak based on how far they travel
-
-      const leftDist = Math.abs(leftSideOrb.position.x);
-      const rightDist = Math.abs(rightSideOrb.position.x);
-
-      if (leftSideOrb instanceof THREE.Mesh && rightSideOrb instanceof THREE.Mesh) {
-        leftSideOrb.material.transparent = true;
-
-        rightSideOrb.material.transparent = true;
-
-        leftSideOrb.material.opacity = THREE.MathUtils.clamp(1 - leftDist / maxDistance, 0, 1);
-
-        rightSideOrb.material.opacity = THREE.MathUtils.clamp(1 - rightDist / maxDistance, 0, 1);
-      }
-    } */
-
-    //rotate the camera around 0,0,0
-    /*     camera.position.x = Math.sin(time * 0.1) * 8;
-    camera.position.z = Math.cos(time * 0.1) * 8;
-    camera.lookAt(0, 0, 0);
- */
-    requestAnimationFrame(animate);
-    scene.traverse((obj) => nonBloomed(obj, bloomLayer, materials));
-    bloomComposer.render();
-    scene.traverse((obj) => restoreMaterial(obj, materials)); // restore real materials
-    finalComposer.render();
-    //stats.end();
-  };
-
   animate();
+
+  onUnmounted(() => {
+    window.removeEventListener('resize', handleResize);
+    window.removeEventListener('mousemove', handleMouseMove);
+
+    if (observer && canvas2.value) {
+      observer.unobserve(canvas2.value);
+      observer.disconnect();
+      observer = null;
+    }
+
+    if (animationFrameId !== 0) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = 0;
+    }
+
+    if (diamondRoot) {
+      scene.remove(diamondRoot);
+      diamondRoot.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+        }
+      });
+      diamondRoot = null;
+    }
+    diamondMaterial.dispose();
+    nebTexture.dispose();
+    renderer?.dispose();
+    renderer = null;
+  });
 });
 </script>
 
@@ -422,15 +330,245 @@ canvas {
   width: 100% !important; /* fill parent width */
   height: 100% !important; /* fill parent height */
   min-height: 100vh;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .background {
   width: 100%;
   height: 100%;
   min-height: 100vh;
+  background-color: rgb(16, 16, 16);
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow: hidden;
+}
+
+.hud-grid {
+  --cell-size: 150px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(var(--cell-size) * 15);
+  height: calc(var(--cell-size) * 8);
+  z-index: 1;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 160, 255, 0.16) 0%,
+    rgba(0, 68, 128, 0.11) 25%,
+    rgb(16, 16, 16) 30%,
+    rgb(16, 16, 16) 100%
+  );
+}
+
+.hud-row {
+  display: flex;
+  height: var(--cell-size);
+  flex-shrink: 0;
+}
+
+.hud-cell {
+  position: relative;
+  width: var(--cell-size);
+  height: var(--cell-size);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.hud-cell::before,
+.hud-cell::after {
+  content: '';
+  position: absolute;
+  opacity: 0;
+  background: rgba(78, 222, 255, var(--line-opacity));
+  will-change: transform, opacity;
+}
+
+.hud-cell::before {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.hud-cell::after {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  transform: scaleY(0);
+  transform-origin: center top;
+}
+
+/* Pseudo-random direction variety per row/column */
+.hud-row:nth-child(2n) .hud-cell:nth-child(3n)::before,
+.hud-row:nth-child(2n + 1) .hud-cell:nth-child(4n)::before {
+  transform-origin: right center;
+}
+
+.hud-row:nth-child(3n) .hud-cell:nth-child(2n)::after,
+.hud-row:nth-child(2n + 1) .hud-cell:nth-child(5n)::after {
+  transform-origin: center bottom;
+}
+
+.hud-grid.revealed .hud-cell::before {
+  animation: cell-line-x var(--line-duration-x) ease-out forwards;
+  animation-delay: var(--line-delay);
+}
+
+.hud-grid.revealed .hud-cell::after {
+  animation: cell-line-y var(--line-duration-y) ease-out forwards;
+  animation-delay: calc(var(--line-delay) + 40ms);
+}
+
+.gradientOverlay {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: 0;
+  width: 100%;
+  pointer-events: none;
+  height: 100%;
+  background-color: rgb(16, 16, 16);
+  background:
+    linear-gradient(
+      to bottom,
+      rgb(16, 16, 16) 0%,
+      rgba(16, 16, 16, 0.65) 14%,
+      rgba(16, 16, 16, 0) 32%,
+      rgba(16, 16, 16, 0) 68%,
+      rgba(16, 16, 16, 0.65) 86%,
+      rgb(16, 16, 16) 100%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(0, 160, 255, 0.12) 0%,
+      rgba(0, 68, 128, 0.08) 25%,
+      rgb(16, 16, 16) 75%,
+      rgb(16, 16, 16) 100%
+    );
+}
+
+.hud-dot {
+  display: block;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: hsl(192 100% calc(72% + var(--dot-variance, 0%)) / 0.78);
+  box-shadow: 0 0 4px hsl(192 100% calc(72% + var(--dot-variance, 0%)) / 0.38);
+  opacity: 0;
+}
+
+.hud-dot-grid {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  width: 100%;
+  height: 100%;
+}
+
+.hud-dot-grid::before,
+.hud-dot-grid::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  transform: translate(50%, 50%) scale(0.72);
+  background: rgba(120, 235, 255, 0.85);
+  box-shadow: 0 0 6px rgba(120, 235, 255, 0.45);
+  opacity: 0;
+}
+
+.hud-dot-grid::before {
+  width: var(--cross-length, 7px);
+  height: var(--cross-thickness, 2px);
+}
+
+.hud-dot-grid::after {
+  width: var(--cross-thickness, 2px);
+  height: var(--cross-length, 7px);
+}
+
+.hud-grid.revealed .hud-dot-grid::before,
+.hud-grid.revealed .hud-dot-grid::after {
+  animation: cross-fade 260ms ease-out forwards;
+  animation-delay: calc(
+    var(--line-delay) + max(var(--line-duration-x), calc(var(--line-duration-y) + 40ms))
+  );
+}
+
+.hud-dot-row {
+  display: flex;
+  justify-content: space-evenly;
+}
+
+.hud-dot.hidden {
+  opacity: 0 !important;
+  box-shadow: none;
+}
+
+.hud-grid.revealed .hud-dot {
+  animation: dot-fade 360ms ease-out forwards;
+  animation-delay: calc(
+    var(--line-delay) + max(var(--line-duration-x), calc(var(--line-duration-y) + 40ms)) +
+      var(--dot-delay)
+  );
+}
+
+@keyframes cell-line-x {
+  0% {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes cell-line-y {
+  0% {
+    opacity: 0;
+    transform: scaleY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes dot-fade {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes cross-fade {
+  0% {
+    opacity: 0;
+    transform: translate(50%, 50%) scale(0.72);
+  }
+  100% {
+    opacity: var(--cross-visible, 0);
+    transform: translate(50%, 50%) scale(1);
+  }
 }
 </style>

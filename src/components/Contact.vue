@@ -1,5 +1,5 @@
 <template>
-  <Divider color="#1e1e1e" />
+  <Divider color="#101010" />
   <div class="container">
     <div class="gradient">
       <div class="content"></div>
