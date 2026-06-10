@@ -11,25 +11,13 @@
             '--line-opacity': `${Math.random() * 0.2 + 0.1}`,
             '--line-duration-x': `${Math.random() * 420 + 320}ms`,
             '--line-duration-y': `${Math.random() * 420 + 320}ms`,
+            '--dots-delay': `${Math.random() * 220 + 40}ms`,
             '--cross-visible': `${Math.random() < 0.4 ? 1 : 0}`,
             '--cross-length': `${Math.random() * 10 + 5}px`,
             '--cross-thickness': `${Math.random() * 2 + 1}px`,
           }"
         >
-          <div class="hud-dot-grid">
-            <span v-for="dotRow in 7" :key="`dot-row-${row}-${col}-${dotRow}`" class="hud-dot-row">
-              <span
-                v-for="dotCol in 7"
-                :key="`dot-${row}-${col}-${dotRow}-${dotCol}`"
-                class="hud-dot"
-                :class="{ hidden: dotRow % 2 === 1 && dotCol % 2 === 1 }"
-                :style="{
-                  '--dot-delay': `${Math.random() * 220 + (dotRow - 1) * 45 + (dotCol - 1) * 30}ms`,
-                  '--dot-variance': `${(Math.random() - 0.5) * 12}%`,
-                }"
-              ></span>
-            </span>
-          </div>
+          <div class="hud-cell-dots"></div>
         </div>
       </div>
     </div>
@@ -382,6 +370,14 @@ canvas {
   box-sizing: border-box;
 }
 
+.hud-cell-dots {
+  position: absolute;
+  inset: 0;
+  background: url('@/assets/dots.png') center / 58% 58% no-repeat;
+  opacity: 0;
+  background-size: auto;
+}
+
 .hud-cell::before,
 .hud-cell::after {
   content: '';
@@ -458,30 +454,8 @@ canvas {
     );
 }
 
-.hud-dot {
-  display: block;
-  width: 2px;
-  height: 2px;
-  border-radius: 50%;
-  background: hsl(192 100% calc(72% + var(--dot-variance, 0%)) / 0.78);
-  box-shadow: 0 0 4px hsl(192 100% calc(72% + var(--dot-variance, 0%)) / 0.38);
-  opacity: 0;
-}
-
-.hud-dot-grid {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-evenly;
-  width: 100%;
-  height: 100%;
-}
-
-.hud-dot-grid::before,
-.hud-dot-grid::after {
+.hud-cell-dots::before,
+.hud-cell-dots::after {
   content: '';
   position: absolute;
   right: 0;
@@ -492,39 +466,29 @@ canvas {
   opacity: 0;
 }
 
-.hud-dot-grid::before {
+.hud-cell-dots::before {
   width: var(--cross-length, 7px);
   height: var(--cross-thickness, 2px);
 }
 
-.hud-dot-grid::after {
+.hud-cell-dots::after {
   width: var(--cross-thickness, 2px);
   height: var(--cross-length, 7px);
 }
 
-.hud-grid.revealed .hud-dot-grid::before,
-.hud-grid.revealed .hud-dot-grid::after {
+.hud-grid.revealed .hud-cell-dots::before,
+.hud-grid.revealed .hud-cell-dots::after {
   animation: cross-fade 260ms ease-out forwards;
   animation-delay: calc(
     var(--line-delay) + max(var(--line-duration-x), calc(var(--line-duration-y) + 40ms))
   );
 }
 
-.hud-dot-row {
-  display: flex;
-  justify-content: space-evenly;
-}
-
-.hud-dot.hidden {
-  opacity: 0 !important;
-  box-shadow: none;
-}
-
-.hud-grid.revealed .hud-dot {
-  animation: dot-fade 360ms ease-out forwards;
+.hud-grid.revealed .hud-cell-dots {
+  animation: dot-image-fade 360ms ease-out forwards;
   animation-delay: calc(
     var(--line-delay) + max(var(--line-duration-x), calc(var(--line-duration-y) + 40ms)) +
-      var(--dot-delay)
+      var(--dots-delay)
   );
 }
 
@@ -550,14 +514,14 @@ canvas {
   }
 }
 
-@keyframes dot-fade {
+@keyframes dot-image-fade {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.6);
+    transform: scale(0.8);
   }
   100% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: scale(1);
   }
 }
 
