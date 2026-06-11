@@ -10,11 +10,12 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+/* import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+ */ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { nonBloomed, restoreMaterial } from '@/utils/render-utils';
 import orbURL from '@/assets/lanscape7.glb?url';
+import gsap from 'gsap';
 
 const canvas3 = ref<HTMLCanvasElement | null>(null);
 const mouse = new THREE.Vector2();
@@ -42,7 +43,7 @@ onMounted(() => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
   const materials = new Map<THREE.Mesh, THREE.Material>();
-  const controls = new OrbitControls(camera, renderer.domElement);
+  //const controls = new OrbitControls(camera, renderer.domElement);
 
   const simpleFogMaterial = new THREE.ShaderMaterial({
     uniforms: {
@@ -104,7 +105,7 @@ onMounted(() => {
   });
   const gltfloader = new GLTFLoader();
   const markers: THREE.Mesh[] = [];
-  let mtl = new THREE.MeshPhongMaterial({
+  const mtl = new THREE.MeshPhongMaterial({
     color: 0xffff00,
     side: THREE.DoubleSide,
     emissive: new THREE.Color(0xffffff),
@@ -112,6 +113,7 @@ onMounted(() => {
   });
   gltfloader.load(orbURL, (gltf) => {
     const root = gltf.scene;
+    root.scale.set(0.3, 0.3, 0.3);
 
     root.traverse((child) => {
       if (child instanceof THREE.Mesh) {
@@ -127,7 +129,6 @@ onMounted(() => {
       }
     });
 
-    root.scale.set(0.3, 0.3, 0.3);
     scene.add(root);
   });
 
@@ -259,11 +260,19 @@ onMounted(() => {
     const dir = new THREE.Vector3().subVectors(mid, center).normalize();
     const control = new THREE.Vector3().copy(center).add(dir.multiplyScalar(mid.length() * 2));
 
-    console.log('here!', origin, destination, control);
+    // Destination marker
+    //scene.add(new THREE.ArrowHelper(destination.clone().normalize(), destination, 1, 0xff0000));
+
+    const endPosition = destination
+      .clone()
+      .normalize() // direction from center through destination
+      .multiplyScalar(destination.length() + 2); // 1 unit beyond
+
+    //console.log('here!', origin, destination, control);
     const curve = new THREE.QuadraticBezierCurve3(
       origin.clone(),
       control.clone(),
-      destination.clone(),
+      endPosition.clone(),
     );
 
     const points = curve.getPoints(100);
@@ -277,10 +286,37 @@ onMounted(() => {
     const line = new THREE.Line(geometry, material);
 
     scene.add(line);
+    return curve;
+  };
+
+  const moveCameraAlongPath = (
+    curve: THREE.QuadraticBezierCurve3,
+    duration: number,
+    camera: THREE.Camera,
+  ) => {
+    const obj = { t: 0 };
+    console.log(gsap, 'helo');
+    gsap.to(obj, {
+      t: 1,
+      duration,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        const position = curve.getPoint(obj.t);
+
+        camera.position.copy(position);
+        // Optional: look slightly ahead on the curve
+        camera.lookAt(0, 0, 0);
+      },
+    });
   };
 
   const onClick = () => {
-    createCameraPath(camera.position.clone(), markers[0].position.clone());
+    console.log(markers);
+    const curve = createCameraPath(
+      camera.position.clone(),
+      markers[1].getWorldPosition(new THREE.Vector3()),
+    );
+    moveCameraAlongPath(curve, 3, camera);
   };
 
   document.addEventListener('click', onClick);
@@ -300,11 +336,11 @@ onMounted(() => {
       simpleFogMaterial.uniforms.fogFar.value = fog.far;
       simpleFogMaterial.uniforms.time.value = time * 0.5;
     }
-    controls.update();
+    /* controls.update(); */
     //rotate the camera around 0,0,0
-    camera.position.x = Math.sin(time * 0.1) * 15;
+    /* camera.position.x = Math.sin(time * 0.1) * 15;
     camera.position.z = Math.cos(time * 0.1) * 15;
-    camera.lookAt(0, 0, 0);
+    camera.lookAt(0, 0, 0); */
 
     requestAnimationFrame(animate);
     scene.traverse((obj) => nonBloomed(obj, bloomLayer, materials));
